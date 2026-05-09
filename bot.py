@@ -144,8 +144,8 @@ async def handle_message(update, context):
         await update.message.reply_text(post, parse_mode="Markdown")
 
 def main():
-    app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
+    app = Application.builder().token(TELEGRAM_BOT_TOKEN).updater(None).build()
+app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     logger.info("\U0001f916 \u0627\u0644\u0628\u0648\u062a \u0634\u063a\u0627\u0644...")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
