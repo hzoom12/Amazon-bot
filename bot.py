@@ -1,17 +1,17 @@
-# رقعة برمجية لحل مشكلة التوافق مع بايثون 3.14
-import telegram.ext._updater
-if not hasattr(telegram.ext._updater.Updater, '_Updater__polling_cleanup_cb'):
-    telegram.ext._updater.Updater._Updater__polling_cleanup_cb = None
-import logging
-import hmac
-import hashlib
-import datetime
-import json
-import re
-import requests
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters
-
+Traceback (most recent call last):
+  File "/opt/render/project/src/bot.py", line 176, in <module>
+    main()
+    ~~~~^^
+  File "/opt/render/project/src/bot.py", line 168, in main
+    app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+  File "/opt/render/project/src/.venv/lib/python3.14/site-packages/telegram/ext/_applicationbuilder.py", line 312, in build
+    updater = Updater(bot=bot, update_queue=update_queue)
+  File "/opt/render/project/src/.venv/lib/python3.14/site-packages/telegram/ext/_updater.py", line 128, in __init__
+    self.__polling_cleanup_cb: Optional[Callable[[], Coroutine[Any, Any, None]]] = None
+    ^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Updater' object attribute '_Updater__polling_cleanup_cb' is read-only
+==> Exited with status 1
+==> Common ways to troubleshoot your deploy: https://render.com/docs/troubleshooting-deploys
 TELEGRAM_BOT_TOKEN   = "8681119804:AAEw9nDZTPkQzIO58-_Li6zS-2h-dbTWjYE"
 AMAZON_ACCESS_KEY    = "AKPANDTX2Z1778330583"
 AMAZON_SECRET_KEY    = "aE1cKjKmpNN1gL7hCvH0NzcNkq30FPJ"
