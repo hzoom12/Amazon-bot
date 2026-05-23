@@ -141,12 +141,35 @@ async def handle_message(update, context):
         await update.message.reply_photo(photo=image_url, caption=post, parse_mode="Markdown")
     else:
         await update.message.reply_text(post, parse_mode="Markdown")
+import threading
+import http.server
+import socketserver
+
+def run_health_server():
+    class HealthHandler(http.server.SimpleHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"OK")
+        def do_HEAD(self):
+            self.send_response(200)
+            self.end_headers()
+
+    # تشغيل سيرفر الويب الداخلي على المنفذ 10000 المطلوب من ريندر
+    with socketserver.TCPServer(("", 10000), HealthHandler) as httpd:
+        httpd.serve_forever()
 
 def main():
+    # 1. تشغيل سيرفر الويب في خلفية الكود كخيط مستقل (Thread)
+    web_thread = threading.Thread(target=run_health_server, daemon=True)
+    web_thread.start()
+
+    # 2. تشغيل البوت الأساسي
     app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    logger.info("\U0001f916 \u0627\u0644\u0628\u0648\u062a \u0634\u063a\u0627\u0644...")
+    logger.info("🤖 البوت شغال وسيرفر الويب مستقر...")
+    
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
