@@ -1,3 +1,7 @@
+# رقعة برمجية لحل مشكلة التوافق مع بايثون 3.14
+import telegram.ext._updater
+if not hasattr(telegram.ext._updater.Updater, '_Updater__polling_cleanup_cb'):
+    telegram.ext._updater.Updater._Updater__polling_cleanup_cb = None
 import logging
 import hmac
 import hashlib
