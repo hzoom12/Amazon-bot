@@ -11,8 +11,8 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# 2. وضع التوكن الجديد والنشط مباشرة بشكل قسري لضمان التشغيل طرداً للتصادم
-TELEGRAM_BOT_TOKEN = "8681119804:AAEqCOZfnEeMKQWsL-Cvn9OFbwh0JbPIaII"
+# 2. وضع التوكن الجديد والنشط بالكامل في السيرفر الجديد
+TELEGRAM_BOT_TOKEN = "8681119804:AAGss6sTb25hyP60fOlV6WIklU3HcFVvHvI"
 
 # 3. سيرفر ويب داخلي لإبقاء سيرفر ريندر أخضر و Live
 def run_health_server():
