@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 # 3. إعدادات التوكن وسيرفر الويب الداخلي لـ Render
 # =========================================================
 # الكود سيبحث عن التوكن في الـ Environment Variables لـ Render باسم TELEGRAM_BOT_TOKEN
-TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_BOT_TOKEN = "8681119804:AAFNa4VekRGp7ERiMh9ke8ZOfsqYYM6eTig"
 
 def run_health_server():
     """سيرفر ويب داخلي خفيف لإبقاء Render سعيداً والخدمة Live"""
