@@ -8,19 +8,19 @@ import logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# --- بيانات حازم الرسمية والجديدة بعد التطهير 🎯 ---
+# --- بيانات حازم الرسمية والنظيفة 🎯 ---
 BOT_TOKEN = "8681119804:AAGhNgJfeliEEK3JCKGZSbFcjpJneadoCPk"
 MY_TAG = "x0659-21"
 
 def expand_url(url):
-    """فك الروابط المختصرة القادمة من تطبيق الجوال لتجنب الأخطاء في السيرفر"""
+    """فك الروابط المختصرة القادمة من تطبيق الجوال"""
     try:
         if "amzn.to" in url or "amzn.eu" in url:
             response = requests.Session().head(url, allow_redirects=True, timeout=7)
             return response.url
         return url
     except Exception as e:
-        logger.error(f"خطأ في فك الرابط: {e}")
+        logger.error(f"Error expanding URL: {e}")
         return url
 
 def clean_price(price_str):
@@ -36,15 +36,12 @@ def clean_price(price_str):
     return ""
 
 def get_amazon_details(url):
-    # تنظيف وفك الرابط أولاً لضمان عمله على السيرفر
     url = expand_url(url)
-    
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
         "Accept-Language": "ar-SA,en-US;q=0.9"
     }
     try:
-        # استخراج كود المنتج وبناء رابط نقي ومضمون بـ تاغك
         asin_match = re.search(r'(?:dp|gp/product)/([A-Z0-9]{10})', url)
         if asin_match:
             asin = asin_match.group(1)
@@ -71,7 +68,7 @@ def get_amazon_details(url):
         if p_before_tag:
             price_before = clean_price(p_before_tag.get_text().strip())
 
-        # 4. استخراج العروض التلقائية
+        # 4. العروض التلقائية
         auto_offers = []
         coupon_tag = soup.find("label", {"id": "vpc_coupon_label"}) or soup.find("span", {"class": "promoPriceHighlight"})
         if coupon_tag:
@@ -89,7 +86,7 @@ def get_amazon_details(url):
 
         return title, price_now, price_before, img_url, final_link, auto_offers
     except Exception as e:
-        logger.error(f"خطأ في جلب تفاصيل المنتج: {e}")
+        logger.error(f"Error fetching details: {e}")
         return None, None, None, None, url, []
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -101,7 +98,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         msg = f"📦 *{title[:90]}...*\n\n"
         
-        # حساب وعرض الخصم بذكاء كما في كودك الناجح
         try:
             if price_before and price_now and int(price_before) > int(price_now):
                 msg += f"❌ السعر كان: {price_before} ريال\n"
@@ -112,7 +108,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if price_now:
                 msg += f"💰 السعر الحالي: {price_now} ريال\n\n"
         
-        # إضافة العروض الثابتة والتلقائية الخاصة بقناتك
         msg += "ولسه تقدر تاخذها أقل\n"
         for offer in auto_offers:
             msg += f"✨ {offer}\n"
@@ -129,8 +124,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text(msg, parse_mode='Markdown')
 
-if __name__ == '__main__':
-    logger.info("🚀 البوت الذكي المطور لحازم شغال بالتوكن الجديد تماماً...")
+def main():
+    logger.info("Starting bot...")
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.run_polling(drop_pending_updates=True)
+
+if __name__ == '__main__':
+    main()
