@@ -1,175 +1,112 @@
-import os
-import re
-import logging
 import requests
-import json
-import time
-import hmac
-import hashlib
-from datetime import datetime
+from bs4 import BeautifulSoup
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import Application, MessageHandler, filters, ContextTypes
+import re
 
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
-logger = logging.getLogger(__name__)
+# --- بياناتك ---
+BOT_TOKEN = "8681119804:AAFNa4VekRGp7ERiMh9ke8ZOfsqYYM6eTig"
+MY_TAG = "x0659-21"
 
-# 1. بيانات حازم الرسمية والجديدة
-TELEGRAM_BOT_TOKEN = "8681119804:AAEOWDZgqsMlTRRH4qS_rwL4qL2sf5ErwnI"
-AMAZON_AFFILIATE_TAG = "x0659-21"
-AWS_ACCESS_KEY = "AKPANDTX2Z1778330583"
-AWS_SECRET_KEY = "aE1cKjKmpNN1gL7hCvH0NzcNkq30FPJ"
+def clean_price(price_str):
+    if not price_str: return ""
+    digits = re.findall(r'\d+', price_str.replace(',', ''))
+    if digits:
+        half = len(digits[0]) // 2
+        first_part = digits[0][:half]
+        second_part = digits[0][half:]
+        if first_part == second_part and len(digits[0]) > 2:
+            return first_part
+        return digits[0]
+    return ""
 
-def expand_url(url):
-    """فك الروابط المختصرة amzn.to تلقائياً"""
+def get_amazon_details(url):
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
+        "Accept-Language": "ar-SA,en-US;q=0.9"
+    }
     try:
-        response = requests.Session().head(url, allow_redirects=True, timeout=5)
-        return response.url
-    except Exception as e:
-        logger.error(f"خطأ في فك الرابط المختصر: {e}")
-        return url
+        final_link = url.split("?")[0] + f"?tag={MY_TAG}" if "?" in url else url + f"?tag={MY_TAG}"
+        res = requests.get(final_link, headers=headers, timeout=15)
+        soup = BeautifulSoup(res.content, "html.parser")
+        
+        # 1. الاسم
+        title_tag = soup.find("span", {"id": "productTitle"})
+        title = title_tag.get_text().strip() if title_tag else "منتج من أمازون"
+        
+        # 2. السعر الحالي
+        price_now = ""
+        p_now_tag = soup.find("span", {"class": "a-price-whole"})
+        if p_now_tag:
+            price_now = clean_price(p_now_tag.get_text().strip())
 
-def extract_asin(text):
-    """استخراج كود الـ ASIN"""
-    pattern = r'(?:dp|gp/product)/([A-Z0-9]{10})'
-    match = re.search(pattern, text)
-    if match:
-        return match.group(1)
-    return None
+        # 3. السعر قبل
+        price_before = ""
+        p_before_tag = soup.find("span", {"class": "basisPrice"}) or soup.find("span", {"class": "a-text-strike"})
+        if p_before_tag:
+            price_before = clean_price(p_before_tag.get_text().strip())
 
-def sign(key, msg):
-    return hmac.new(key, msg.encode('utf-8'), hashlib.sha256).digest()
+        # 4. استخراج العروض التلقائية (Coupon / Promotions)
+        auto_offers = []
+        # البحث عن الكوبونات (وفر X%)
+        coupon_tag = soup.find("label", {"id": "vpc_coupon_label"}) or soup.find("span", {"class": "promoPriceHighlight"})
+        if coupon_tag:
+            offer_text = coupon_tag.get_text().strip()
+            if offer_text: auto_offers.append(offer_text)
+            
+        # البحث عن عروض البنوك أو العروض الترويجية المختصرة
+        promo_tag = soup.find("div", {"id": "item_benefit_description"}) or soup.find("span", {"class": "a-truncate-full"})
+        if promo_tag:
+            promo_text = promo_tag.get_text().strip()
+            if len(promo_text) < 100: auto_offers.append(promo_text)
 
-def get_signature_key(key, date_stamp, regionName, serviceName):
-    kDate = sign(('AWS4' + key).encode('utf-8'), date_stamp)
-    kRegion = sign(kDate, regionName)
-    kService = sign(kRegion, serviceName)
-    kSigning = sign(kService, 'aws4_request')
-    return kSigning
+        # 5. رابط الصورة
+        img_tag = soup.find("img", {"id": "landingImage"}) or soup.find("img", {"id": "main-image"})
+        img_url = img_tag.get("src") if img_tag else ""
 
-def get_amazon_product_details_official(asin):
-    """الاتصال الرسمي بسيرفرات أمازون السعودية وسحب تفاصيل المنتج بدقة"""
-    try:
-        host = "product-advertising.amazon.sa"
-        region = "eu-west-1"
-        service = "ProductAdvertisingAPI"
-        endpoint = "https://product-advertising.amazon.sa/paapi5/getitems"
-        
-        payload = {
-            "ItemIds": [asin],
-            "Resources": ["ItemInfo.Title", "Offers.Listings.Price", "Images.Primary.Large"],
-            "PartnerTag": AMAZON_AFFILIATE_TAG,
-            "PartnerType": "Associates",
-            "Marketplace": "amazon.sa"
-        }
-        
-        body = json.dumps(payload)
-        t = datetime.utcnow()
-        amz_date = t.strftime('%Y%m%dT%H%M%SZ')
-        date_stamp = t.strftime('%Y%m%d')
-        
-        canonical_headers = f"content-type:application/json; charset=utf-8\nhost:{host}\nx-amz-target:com.amazon.paapi5.v1.ProductAdvertisingAPIv1.GetItems\n"
-        signed_headers = "content-type;host;x-amz-target"
-        
-        payload_hash = hashlib.sha256(body.encode('utf-8')).hexdigest()
-        canonical_request = f"POST\n/paapi5/getitems\n\n{canonical_headers}\n{signed_headers}\n{payload_hash}"
-        
-        algorithm = "AWS4-HMAC-SHA256"
-        credential_scope = f"{date_stamp}/{region}/{service}/aws4_request"
-        string_to_sign = f"{algorithm}\n{amz_date}\n{credential_scope}\n{hashlib.sha256(canonical_request.encode('utf-8')).hexdigest()}"
-        
-        signing_key = get_signature_key(AWS_SECRET_KEY, date_stamp, region, service)
-        signature = hmac.new(signing_key, string_to_sign.encode('utf-8'), hashlib.sha256).hexdigest()
-        
-        authorization_header = f"{algorithm} Credential={AWS_ACCESS_KEY}/{credential_scope}, SignedHeaders={signed_headers}, Signature={signature}"
-        
-        headers = {
-            "content-type": "application/json; charset=utf-8",
-            "x-amz-target": "com.amazon.paapi5.v1.ProductAdvertisingAPIv1.GetItems",
-            "host": host,
-            "x-amz-date": amz_date,
-            "Authorization": authorization_header
-        }
-        
-        response = requests.post(endpoint, headers=headers, data=body, timeout=10)
-        if response.status_code == 200:
-            res_json = response.json()
-            items = res_json.get("ItemsResult", {}).get("Items", [])
-            if items:
-                item = items[0]
-                title = item.get("ItemInfo", {}).get("Title", {}).get("DisplayValue", "منتج أماzون المميز")
-                
-                # جلب السعر
-                price = "متوفر داخل الرابط"
-                listings = item.get("Offers", {}).get("Listings", [])
-                if listings:
-                    price_attr = listings[0].get("Price", {})
-                    if price_attr:
-                        price = price_attr.get("DisplayAmount", price)
-                
-                # جلب الصورة
-                image = item.get("Images", {}).get("Primary", {}).get("Large", {}).get("URL", None)
-                
-                return {"title": title, "price": price, "image": image}
-    except Exception as e:
-        logger.error(f"خطأ في طلب الـ API الرسمي: {e}")
-    return None
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("أهلاً بك يا حازم! 🚀\nالبوت شغال بالنظام الرسمي والأمن 100% عبر API أمازون. أرسل أي رابط الآن.")
+        return title, price_now, price_before, img_url, final_link, auto_offers
+    except:
+        return None, None, None, None, url, []
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
-    msg = await update.message.reply_text("⏳ جاري جلب تفاصيل المنتج الرسميّة والسعر من أمازون...")
-    
-    if "amzn.to" in text:
-        urls = re.findall(r'(https?://[^\s]+)', text)
-        if urls: text = expand_url(urls[0])
+    url = update.message.text
+    if "amazon.sa" in url or "amzn.eu" in url or "amzn.to" in url:
+        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+        
+        title, price_now, price_before, img, link, auto_offers = get_amazon_details(url)
+        
+        msg = f"📦 *{title[:90]}...*\n\n"
+        
+        if price_before and price_now and int(price_before) > int(price_now):
+            msg += f"❌ السعر كان: {price_before} ريال\n"
+            msg += f"✅ السعر والآن: {price_now} ريال فقط! 🔥\n\n"
+        elif price_now:
+            msg += f"💰 السعر الحالي: {price_now} ريال\n\n"
+        
+        # إضافة العروض المكتشفة تلقائياً
+        if auto_offers or True: # تركت True عشان نضيف العروض الثابتة حقتك دائماً
+            msg += "ولسه تقدر تاخذها أقل\n"
             
-    asin = extract_asin(text)
-    if not asin:
-        await msg.edit_text("⚠️ لم أجد كود منتج صحيح.")
-        return
+            # عرض العروض اللي لقاها البوت في الموقع
+            for offer in auto_offers:
+                msg += f"✨ {offer}\n"
+            
+            # العروض الثابتة اللي تبيها دائماً تظهر
+            msg += "✨ الكود اللي أرسله 15٪\n"
+            msg += "✨ خصم الأهلي 25٪\n\n"
         
-    affiliate_link = f"https://www.amazon.sa/dp/{asin}?tag={AMAZON_AFFILIATE_TAG}"
-    
-    # طلب البيانات عبر المفاتيح الرسمية لحازم
-    product_info = get_amazon_product_details_official(asin)
-    
-    if product_info:
-        title = product_info['title']
-        price = product_info['price']
-        image_url = product_info['image']
-        
-        post_text = (
-            f"📦 *{title}*\n\n"
-            f"💰 *السعر:* {price}\n\n"
-            f"🔗 *رابط الأفلييت الخاص بك:* \n{affiliate_link}"
-        )
-    else:
-        # نظام الطوارئ النظيف بدون قنوات خارجية
-        post_text = (
-            f"📦 *منتج أمازون المميز*\n\n"
-            f"🔗 *رابط الأفلييت الخاص بك:* \n{affiliate_link}"
-        )
-        image_url = None
+        msg += f"👇 للشراء والطلب من هنا:\n{link}"
 
-    try:
-        await msg.delete()
-    except:
-        pass
+        if img:
+            try:
+                await update.message.reply_photo(photo=img, caption=msg, parse_mode='Markdown')
+            except:
+                await update.message.reply_text(msg, parse_mode='Markdown')
+        else:
+            await update.message.reply_text(msg, parse_mode='Markdown')
 
-    if image_url:
-        await update.message.reply_photo(photo=image_url, caption=post_text, parse_mode="Markdown")
-    else:
-        await update.message.reply_text(post_text, parse_mode="Markdown")
-
-def main():
-    app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
+if __name__ == '__main__':
+    print("🚀 البوت الذكي (مستخرج العروض) شغال الآن..")
+    app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    
-    logger.info("🤖 تشغيل البوت الرسمي عبر مفاتيح PA-API الموثوقة...")
-    app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
-
-if __name__ == "__main__":
-    main()
+    app.run_polling(drop_pending_updates=True)
