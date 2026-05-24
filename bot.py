@@ -78,23 +78,32 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await msg.delete()
     await update.message.reply_text(post, parse_mode="Markdown")
 
-# 5. تشغيل البوت مع ميزة الحماية وإسقاط الطوابير القديمة
+# 5. نقطة الانطلاق الأساسية (Main) المزودة بأمر طرد النسخ المعلقة
 def main():
+    # تشغيل سيرفر الويب في الخلفية
     web_thread = threading.Thread(target=run_health_server, daemon=True)
     web_thread.start()
 
+    # بناء تطبيق التيليجرام
     app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+    
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    logger.info("🤖 البوت ينطلق الآن بنظام حماية الطابور...")
+    logger.info("🤖 البوت يقوم الآن بتطهير الاتصال وطرد أي سيرفر معلق...")
     
-    # ميزة drop_pending_updates تسحق أي رسائل أو تراكمات قديمة تسبب تعليق السيرفر
-    app.run_polling(
-        allowed_updates=Update.ALL_TYPES,
-        drop_pending_updates=True,
-        close_loop=False
-    )
+    # حيلة برمجية لطرد أي عملية قديمة أو معلقة في ريندر مستخدمة نفس التوكن
+    try:
+        import asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        # أمر تيليجرام الصارم: احذف أي اتصال قديم فوراً ونظف الطابور
+        loop.run_until_complete(app.bot.delete_webhook(drop_pending_updates=True))
+    except Exception as e:
+        logger.error(f"تنبيه أثناء تنظيف الاتصال: {e}")
+
+    # تشغيل البوت على نظافة تامة
+    app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True, close_loop=False)
 
 if __name__ == "__main__":
     main()
