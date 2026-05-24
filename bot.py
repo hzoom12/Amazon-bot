@@ -9,56 +9,70 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# 1. البيانات الثابتة الخاصة بك
+# بيانات حازم الرسمية
 TELEGRAM_BOT_TOKEN = "8681119804:AAEOWDZgqsMlTRRH4qS_rwL4qL2sf5ErwnI"
 AMAZON_AFFILIATE_TAG = "x0659-21"
 
 def expand_url(url):
-    """فك الروابط المختصرة amzn.to"""
+    """فك الروابط المختصرة amzn.to بشكل مباشر ونقي"""
     try:
-        response = requests.Session().head(url, allow_redirects=True, timeout=5)
+        session = requests.Session()
+        # ترويسة حقيقية لفك الرابط دون اعتراضه
+        session.headers.update({
+            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1"
+        })
+        response = session.head(url, allow_redirects=True, timeout=7)
         return response.url
     except Exception as e:
         logger.error(f"خطأ في فك الرابط المختصر: {e}")
         return url
 
 def extract_asin(text):
-    """استخراج كود المنتج ASIN"""
+    """استخراج كود الـ ASIN من الرابط الطويل"""
     pattern = r'(?:dp|gp/product)/([A-Z0-9]{10})'
     match = re.search(pattern, text)
     if match:
         return match.group(1)
     return None
 
-def scrape_amazon_product(asin):
-    """قراءة صفحة المنتج مباشرة لجلب الاسم بدون الحاجة لمفاتيح الـ API"""
+def scrape_amazon_product_clean(asin):
+    """كشط نقي ومباشر من أمازون السعودية كمتصفح حقيقي 100% بدون وسيط"""
     try:
         url = f"https://www.amazon.sa/dp/{asin}"
-        # إرسال ترويسة متصفح حقيقي لتجنب حظر أمازون للـ Bots
+        # ترويسة متصفح كروم حديثة ومكتملة لتخطي الحجب تلقائياً وبأمان
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
-            "Accept-Language": "ar-AE,ar;q=0.9,en-US;q=0.8,en;q=0.7"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "ar-AE,ar;q=0.9,en-US;q=0.8,en;q=0.7",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1"
         }
         
         response = requests.get(url, headers=headers, timeout=10)
         if response.status_code == 200:
             soup = BeautifulSoup(response.content, 'html.parser')
             
-            # محاولة استخراج عنوان المنتج
+            # محاولة قراءة عنوان المنتج من أكثر من مكان مخصص في أمازون لضمان النجاح
             title_element = soup.find("span", {"id": "productTitle"})
-            title = title_element.get_text().strip() if title_element else "منتج أمازون المميز"
+            if not title_element:
+                title_element = soup.find("meta", {"name": "title"})
+                if title_element:
+                    return {"title": title_element.get("content", "").strip()}
             
-            return {"title": title}
+            if title_element:
+                title = title_element.get_text().strip()
+                return {"title": title}
     except Exception as e:
-        logger.error(f"خطأ أثناء قراءة صفحة المنتج: {e}")
+        logger.error(f"خطأ في الكشط النقي: {e}")
     return None
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("أهلاً بك يا حازم! 🚀\nأرسل لي أي رابط أمازون وسأجلب لك اسمه ورابط الأفلييت الخاص بك فوراً.")
+    await update.message.reply_text("أهلاً بك يا حازم! 🚀\nتم تنظيف البوت بالكامل، أرسل لي أي رابط أمازون الآن وسأحوله لتاغك فوراً وبشكل مستقل.")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
-    msg = await update.message.reply_text("⏳ جاري فحص الرابط وسحب اسم المنتج...")
+    msg = await update.message.reply_text("⏳ جاري قراءة تفاصيل المنتج وتحويل الرابط...")
     
     # 1. فك الرابط إذا كان مختصراً
     if "amzn.to" in text:
@@ -74,17 +88,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     affiliate_link = f"https://www.amazon.sa/dp/{asin}?tag={AMAZON_AFFILIATE_TAG}"
     
-    # 3. جلب البيانات عبر الكشط (Scraping)
-    product_info = scrape_amazon_product(asin)
+    # 3. جلب الاسم بالكشط النظيف الجديد
+    product_info = scrape_amazon_product_clean(asin)
     
-    if product_info:
+    if product_info and product_info['title'] != "منتج أمازون المميز":
         title = product_info['title']
         post_text = (
             f"📦 *{title}*\n\n"
             f"🔗 *رابط الأفلييت الخاص بك:* \n{affiliate_link}"
         )
     else:
-        # وضع احتياطي في حال فرضت أمازون حماية مؤقتة على الصفحة
+        # الوضع الاحتياطي الذكي والمباشر بـ تاغك لو كانت الصفحة محمية
         post_text = (
             f"📦 *منتج أمازون المميز*\n\n"
             f"🆔 كود المنتج (ASIN): `{asin}`\n\n"
@@ -103,7 +117,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    logger.info("🤖 البوت يعمل بالخلفية بنظام الـ Scraping المباشر...")
+    logger.info("🤖 البوت يعمل بالنسخة المستقلة والنقية 100%...")
     app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
 
 if __name__ == "__main__":
