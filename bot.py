@@ -8,8 +8,8 @@ import logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# --- بيانات حازم الرسمية المستخرجة من كودك الناجح ---
-BOT_TOKEN = "8681119804:AAFNa4VekRGp7ERiMh9ke8ZOfsqYYM6eTig"
+# --- بيانات حازم الرسمية والجديدة بعد التطهير 🎯 ---
+BOT_TOKEN = "8681119804:AAGhNgJfeliEEK3JCKGZSbFcjpJneadoCPk"
 MY_TAG = "x0659-21"
 
 def expand_url(url):
@@ -130,7 +130,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(msg, parse_mode='Markdown')
 
 if __name__ == '__main__':
-    logger.info("🚀 البوت الذكي المطور لحازم شغال الآن...")
+    logger.info("🚀 البوت الذكي المطور لحازم شغال بالتوكن الجديد تماماً...")
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.run_polling(drop_pending_updates=True)
