@@ -39,9 +39,8 @@ def clean_price(price_str):
 def get_amazon_details(url):
     url = expand_url(url)
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept-Language": "ar-SA,en-US;q=0.9",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
+        "Accept-Language": "ar-SA,en-US;q=0.9"
     }
     try:
         asin_match = re.search(r'(?:dp|gp/product)/([A-Z0-9]{10})', url)
@@ -54,9 +53,9 @@ def get_amazon_details(url):
         res = requests.get(final_link, headers=headers, timeout=15)
         soup = BeautifulSoup(res.content, "html.parser")
         
-        # 1. الاسم (مع جدار حماية لو تغير الكود)
+        # 1. الاسم
         title_tag = soup.find("span", {"id": "productTitle"})
-        title = title_tag.get_text().strip() if title_tag else "منتج مميز من أمازون"
+        title = title_tag.get_text().strip() if title_tag else "منتج من أمازون"
         
         # 2. السعر الحالي
         price_now = ""
@@ -89,7 +88,7 @@ def get_amazon_details(url):
         return title, price_now, price_before, img_url, final_link, auto_offers
     except Exception as e:
         logger.error(f"Error fetching details: {e}")
-        return "منتج من أمازون", "", "", "", url, []
+        return None, None, None, None, url, []
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text
@@ -98,65 +97,50 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         title, price_now, price_before, img, link, auto_offers = get_amazon_details(url)
         
-        # صياغة نص الرسالة
+        # تنسيق النص الأساسي
         msg = f"{title}\n\n"
         
-        # فحص عروض أسبوع التوفير ذكياً
-        all_offers_text = " ".join(auto_offers).lower()
-        is_savings_week = "توفير" in all_offers_text or "خصم" in all_offers_text or "coupon" in all_offers_text or "توفير" in title.lower()
-        
-        price_posted = False
-        
-        # محاولة حساب خصم أسبوع التوفير بأمان داخل try معزولة
-        if is_savings_week and price_now:
+        # هنا الفحص البسيط: لو البوت لقى أي عرض تلقائي مكتوب في صفحة أمازون
+        if auto_offers and price_now:
             try:
-                clean_num = "".join(re.findall(r'\d+', price_now))
-                if clean_num and float(clean_num) > 0:
-                    discounted_price = round(float(clean_num) * 0.80)
-                    if price_before:
-                        msg += f"❌ كان {price_before} ريال \n"
-                    msg += f"✅ والان {discounted_price} ريال 🤩\n\n"
-                    msg += "🔣 بعد خصم اسبوع التوفير 20%\n\n"
-                    price_posted = True
-            except Exception as e:
-                logger.error(f"Calculation failed: {e}")
-
-        # إذا لم يكن هناك عرض توفير أو فشلت الحسبة، نظهر السعر الطبيعي المستخرج بأمان
-        if not price_posted:
+                # يحسب خصم 20% الإضافي بناءً على السعر الحالي
+                discounted_price = round(int(price_now) * 0.80)
+                if price_before:
+                    msg += f"❌ كان {price_before} ريال \n"
+                msg += f"✅ والان {discounted_price} ريال 🤩\n\n"
+                msg += "🔣بعد خصم اسبوع التوفير20% \n\n"
+            except:
+                # لو فشلت الحسبة لأي سبب يرجع للنص الطبيعي حق كودك القديم
+                if price_before:
+                    msg += f"❌ كان {price_before} ريال \n"
+                msg += f"✅ والان {price_now} ريال 🤩\n\n"
+        else:
+            # إذا ما في عروض تلقائية، يظهر السعر العادي المستخرج
             if price_before and price_now:
                 msg += f"❌ كان {price_before} ريال \n"
                 msg += f"✅ والان {price_now} ريال 🤩\n\n"
             elif price_now:
                 msg += f"✅ والان {price_now} ريال 🤩\n\n"
         
-        # الرابط المباشر
         msg += f"{link}"
 
-        # --------------------------------------------------
-        # إرسال الرد في الخاص (محمي تماماً من أي تعليق)
-        # --------------------------------------------------
-        try:
-            if img and img.startswith("http"):
-                await update.message.reply_photo(photo=img, caption=msg)
-            else:
-                await update.message.reply_text(msg)
-        except Exception as e:
-            logger.error(f"Private reply failed: {e}")
+        # إرسال الرد في الخاص (بنفس طريقة كودك القديم المضمونة)
+        if img:
             try:
-                await update.message.reply_text(msg)
+                await update.message.reply_photo(photo=img, caption=msg, parse_mode='Markdown')
             except:
-                pass
+                await update.message.reply_text(msg, parse_mode='Markdown')
+        else:
+            await update.message.reply_text(msg, parse_mode='Markdown')
 
-        # --------------------------------------------------
-        # الإرسال التلقائي للقناة (معزول تماماً ومحمي)
-        # --------------------------------------------------
+        # إرسال نفس الرسالة تلقائياً لقناتك المستهدفة
         try:
-            if img and img.startswith("http"):
-                await context.bot.send_photo(chat_id=TARGET_CHANNEL, photo=img, caption=msg)
+            if img:
+                await context.bot.send_photo(chat_id=TARGET_CHANNEL, photo=img, caption=msg, parse_mode='Markdown')
             else:
-                await context.bot.send_message(chat_id=TARGET_CHANNEL, text=msg)
+                await context.bot.send_message(chat_id=TARGET_CHANNEL, text=msg, parse_mode='Markdown')
         except Exception as e:
-            logger.error(f"Channel send failed: {e}")
+            logger.error(f"Error sending to channel: {e}")
 
 def main():
     logger.info("Starting bot...")
