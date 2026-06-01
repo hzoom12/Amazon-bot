@@ -12,12 +12,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         all_offers_text = " ".join(auto_offers).lower()
         is_savings_week = "توفير" in all_offers_text or "خصم" in all_offers_text or "coupon" in all_offers_text or "توفير" in title.lower()
         
-        # 2. تجهيز نص الأسعار بأمان تام بدون تحويلات تسبب أخطاء
+        # 2. تجهيز نص الأسعار بأمان
         price_posted = False
         
         if is_savings_week and price_now:
             try:
-                # تنظيف السعر والتأكد من أنه رقم قبل الحساب
                 clean_num = "".join(re.findall(r'\d+', price_now))
                 if clean_num:
                     discounted_price = round(float(clean_num) * 0.80)
@@ -29,7 +28,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 logger.error(f"Error calculating discount: {e}")
 
-        # إذا لم يكن هناك عرض توفير، أو فشلت الحسبة الرياضية لأي سبب، يرسل السعر الطبيعي
         if not price_posted:
             if price_before and price_now:
                 msg += f"❌ كان {price_before} ريال \n"
@@ -40,20 +38,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # 3. الرابط في النهاية
         msg += f"{link}"
 
-        # إرسال الرد في الشات الخاص أولاً
-        if img:
-            try:
-                await update.message.reply_photo(photo=img, caption=msg, parse_mode='Markdown')
-            except:
-                await update.message.reply_text(msg, parse_mode='Markdown')
-        else:
-            await update.message.reply_text(msg, parse_mode='Markdown')
-
-        # إرسال نفس الرسالة تلقائياً لقناتك المستهدفة
+        # --------------------------------------------------
+        # الجزء الأول: الرد في الشات الخاص عندك (مضمون ومفصول تماماً)
+        # --------------------------------------------------
         try:
             if img:
-                await context.bot.send_photo(chat_id=TARGET_CHANNEL, photo=img, caption=msg, parse_mode='Markdown')
+                await update.message.reply_photo(photo=img, caption=msg)
             else:
-                await context.bot.send_message(chat_id=TARGET_CHANNEL, text=msg, parse_mode='Markdown')
+                await update.message.reply_text(msg)
         except Exception as e:
-            logger.error(f"Error sending to channel: {e}")
+            logger.error(f"Error replying in private chat: {e}")
+
+        # --------------------------------------------------
+        # الجزء الثاني: الإرسال التلقائي للقناة (معزول تماماً لو فشل ما يخرب الخاص)
+        # --------------------------------------------------
+        try:
+            # تأكد أن المعرف مكتوب صح فوق TARGET_CHANNEL = "@smartshophazim"
+            if img:
+                await context.bot.send_photo(chat_id=TARGET_CHANNEL, photo=img, caption=msg)
+            else:
+                await context.bot.send_message(chat_id=TARGET_CHANNEL, text=msg)
+        except Exception as e:
+            # لو في مشكلة بالقناة (مثل البوت مو مشرف)، بيسجل الخطأ هنا بالخفاء بدون ما يعلق البوت عندك
+            logger.error(f"Error sending to channel {TARGET_CHANNEL}: {e}")
