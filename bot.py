@@ -57,7 +57,7 @@ def get_amazon_details(url):
         title_tag = soup.find("span", {"id": "productTitle"})
         title = title_tag.get_text().strip() if title_tag else "منتج من أمازون"
         
-        # 2. السعر الحالي - حظر السعر الغلط
+        # 2. السعر الحالي - من داخل صندوق السعر الرئيسي
         price_now = ""
         price_inside_box = soup.find("div", {"id": "apex_desktop"})
         if price_inside_box:
@@ -76,33 +76,21 @@ def get_amazon_details(url):
         if p_before_tag:
             price_before = clean_price(p_before_tag.get_text().strip())
 
-        # 4. العروض التلقائية
-        auto_offers = []
-        coupon_tag = soup.find("label", {"id": "vpc_coupon_label"}) or soup.find("span", {"class": "promoPriceHighlight"})
-        if coupon_tag:
-            offer_text = coupon_tag.get_text().strip()
-            if offer_text: auto_offers.append(offer_text)
-            
-        promo_tag = soup.find("div", {"id": "item_benefit_description"}) or soup.find("span", {"class": "a-truncate-full"})
-        if promo_tag:
-            promo_text = promo_tag.get_text().strip()
-            if len(promo_text) < 100: auto_offers.append(promo_text)
-
         # 5. رابط الصورة
         img_tag = soup.find("img", {"id": "landingImage"}) or soup.find("img", {"id": "main-image"})
         img_url = img_tag.get("src") if img_tag else ""
 
-        return title, price_now, price_before, img_url, final_link, auto_offers
+        return title, price_now, price_before, img_url, final_link
     except Exception as e:
         logger.error(f"Error fetching details: {e}")
-        return None, None, None, None, url, []
+        return None, None, None, None, url
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text
     if "amazon" in url or "amzn" in url:
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
         
-        title, price_now, price_before, img, link, auto_offers = get_amazon_details(url)
+        title, price_now, price_before, img, link = get_amazon_details(url)
         
         # تنسيق النص الأساسي
         msg = f"{title}\n\n"
@@ -114,16 +102,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif price_now:
             msg += f"✅ والان {price_now} ريال 🤩\n\n"
             
-        # فحص أمني: نتأكد إن العروض ما فيها النص المستفز حق البوت الثاني
-        has_real_offer = False
-        for offer in auto_offers:
-            if "to use this bot" in offer.lower() or "a_toolsx" in offer.lower():
-                continue # تخطي النص الخبيث واشطب عليه
-            has_real_offer = True
-
-        # إذا لقى عروض حقيقية ونظيفة، يطبع جملتك الثابتة
-        if has_real_offer:
-            msg += "🔹 يشملها خصم اسبوع التوفير20٪ \n\n"
+        # إضافة الجملة الترويجية بشكل ثابت ومضمون لكل المنتجات بدون فحص معقد 🎯
+        msg += "🔹 يشملها خصم اسبوع التوفير20٪ \n\n"
         
         msg += f"{link}"
 
