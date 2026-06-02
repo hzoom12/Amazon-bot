@@ -1,41 +1,3 @@
-import requests
-from bs4 import BeautifulSoup
-from telegram import Update
-from telegram.ext import Application, MessageHandler, filters, ContextTypes
-import re
-import logging
-
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# --- بيانات حازم الرسمية والنظيفة 🎯 ---
-BOT_TOKEN = "8681119804:AAGhNgJfeliEEK3JCKGZSbFcjpJneadoCPk"
-MY_TAG = "x0659-21"
-TARGET_CHANNEL = "@smartshophazim"
-
-def expand_url(url):
-    """فك الروابط المختصرة القادمة من تطبيق الجوال"""
-    try:
-        if "amzn.to" in url or "amzn.eu" in url:
-            response = requests.Session().head(url, allow_redirects=True, timeout=7)
-            return response.url
-        return url
-    except Exception as e:
-        logger.error(f"Error expanding URL: {e}")
-        return url
-
-def clean_price(price_str):
-    if not price_str: return ""
-    digits = re.findall(r'\d+', price_str.replace(',', ''))
-    if digits:
-        half = len(digits[0]) // 2
-        first_part = digits[0][:half]
-        second_part = digits[0][half:]
-        if first_part == second_part and len(digits[0]) > 2:
-            return first_part
-        return digits[0]
-    return ""
-
 def get_amazon_details(url):
     url = expand_url(url)
     headers = {
@@ -62,22 +24,22 @@ def get_amazon_details(url):
         if p_before_tag:
             price_before = clean_price(p_before_tag.get_text().strip())
 
-        # 4. العروض التلقائية الكوبونات
+        # 4. العروض التلقائية (فحص دقيق داخل صناديق العروض والكوبونات فقط 🎯)
         auto_offers = []
+        
+        # تاغ الكوبونات المشهور
         coupon_tag = soup.find("label", {"id": "vpc_coupon_label"}) or soup.find("span", {"class": "promoPriceHighlight"})
         if coupon_tag:
             offer_text = coupon_tag.get_text().strip()
             if offer_text: auto_offers.append(offer_text)
             
+        # تاغ العروض الترويجية في صفحة المنتج (تحت السعر)
         promo_tag = soup.find("div", {"id": "item_benefit_description"}) or soup.find("span", {"class": "a-truncate-full"}) or soup.find("div", {"id": "apex_desktop_qualifiedBuybox_promotions"})
         if promo_tag:
             promo_text = promo_tag.get_text().strip()
-            if len(promo_text) < 150: auto_offers.append(promo_text)
-
-        # فحص ذكي وخفيف بداخل نص الصفحة بدون حوسة: لو فيه عرض أسبوع التوفير عشان يلقطه البوت علطول
-        page_html = res.text.lower()
-        if "توفير" in page_html or "saving" in page_html:
-            auto_offers.append("savings_week_detected")
+            # نتأكد إن النص المكتوب داخل صندوق العرض فعلياً يخص التوفير أو الخصم
+            if len(promo_text) < 150 and any(keyword in promo_text for keyword in ["توفير", "خصم", "coupon", "saving", "تخفيض"]):
+                auto_offers.append(promo_text)
 
         # تأكيد تحويل الرابط لـ Affiliate
         asin_match = re.search(r'(?:dp|gp/product)/([A-Z0-9]{10})', url)
@@ -95,64 +57,3 @@ def get_amazon_details(url):
     except Exception as e:
         logger.error(f"Error fetching details: {e}")
         return None, None, None, None, url, []
-
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    url = update.message.text
-    if "amazon" in url or "amzn" in url:
-        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-        
-        title, price_now, price_before, img, link, auto_offers = get_amazon_details(url)
-        
-        # تنسيق النص الأساسي
-        msg = f"{title}\n\n"
-        
-        # فحص وجود الكوبونات أو عروض التوفير المستخرجة
-        if auto_offers and price_now:
-            try:
-                clean_num = "".join(re.findall(r'\d+', price_now))
-                discounted_price = round(int(clean_num) * 0.80)
-                if price_before:
-                    msg += f"❌ كان {price_before} ريال \n"
-                msg += f"✅ والان {discounted_price} ريال 🤩\n\n"
-                msg += "🔣بعد خصم اسبوع التوفير20% \n\n"
-            except:
-                if price_before and price_now:
-                    msg += f"❌ كان {price_before} ريال \n"
-                    msg += f"✅ والان {price_now} ريال 🤩\n\n"
-                elif price_now:
-                    msg += f"✅ والان {price_now} ريال 🤩\n\n"
-        else:
-            if price_before and price_now:
-                msg += f"❌ كان {price_before} ريال \n"
-                msg += f"✅ والان {price_now} ريال 🤩\n\n"
-            elif price_now:
-                msg += f"✅ والان {price_now} ريال 🤩\n\n"
-        
-        msg += f"{link}"
-
-        # إرسال الرد في الخاص
-        if img:
-            try:
-                await update.message.reply_photo(photo=img, caption=msg, parse_mode='Markdown')
-            except:
-                await update.message.reply_text(msg, parse_mode='Markdown')
-        else:
-            await update.message.reply_text(msg, parse_mode='Markdown')
-
-        # إرسال نفس الرسالة تلقائياً لقناتك المستهدفة
-        try:
-            if img:
-                await context.bot.send_photo(chat_id=TARGET_CHANNEL, photo=img, caption=msg, parse_mode='Markdown')
-            else:
-                await context.bot.send_message(chat_id=TARGET_CHANNEL, text=msg, parse_mode='Markdown')
-        except Exception as e:
-            logger.error(f"Error sending to channel: {e}")
-
-def main():
-    logger.info("Starting bot...")
-    app = Application.builder().token(BOT_TOKEN).build()
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    app.run_polling(drop_pending_updates=True)
-
-if __name__ == '__main__':
-    main()
