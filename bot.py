@@ -26,10 +26,14 @@ def expand_url(url):
 
 def clean_price(price_str):
     if not price_str: return ""
-    # تنظيف النص من أي كلام ونبقي فقط على الأرقام والنقاط (مثل 39.95)
-    price_match = re.search(r'\d+(?:\.\d+)?', price_str.replace(',', ''))
-    if price_match:
-        return price_match.group(0)
+    digits = re.findall(r'\d+', price_str.replace(',', ''))
+    if digits:
+        half = len(digits[0]) // 2
+        first_part = digits[0][:half]
+        second_part = digits[0][half:]
+        if first_part == second_part and len(digits[0]) > 2:
+            return first_part
+        return digits[0]
     return ""
 
 def get_amazon_details(url):
@@ -53,18 +57,11 @@ def get_amazon_details(url):
         title_tag = soup.find("span", {"id": "productTitle"})
         title = title_tag.get_text().strip() if title_tag else "منتج من أمازون"
         
-        # 2. السعر الحالي (لقط أدق وعزل الفراغات)
+        # 2. السعر الحالي
         price_now = ""
-        price_container = soup.find("span", {"class": "a-price"})
-        if price_container:
-            p_text = price_container.find("span", {"class": "a-offscreen"})
-            if p_text:
-                price_now = clean_price(p_text.get_text().strip())
-        
-        if not price_now:
-            p_now_tag = soup.find("span", {"class": "a-price-whole"})
-            if p_now_tag:
-                price_now = clean_price(p_now_tag.get_text().strip())
+        p_now_tag = soup.find("span", {"class": "a-price-whole"})
+        if p_now_tag:
+            price_now = clean_price(p_now_tag.get_text().strip())
 
         # 3. السعر قبل
         price_before = ""
@@ -103,30 +100,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # تنسيق النص الأساسي
         msg = f"{title}\n\n"
         
-        # فحص الحسبة الذكية وحساب الـ 20% لو في عروض
-        if auto_offers and price_now:
-            try:
-                # تحويل السعر لرقم عشري وحساب الخصم بدقة وتقريبه لأقرب رقم صحيح
-                base_p = float(price_now)
-                discounted_price = round(base_p * 0.80)
-                
-                # السعر قبل الخصم الكلي بيصير هو السعر الحالي المعروض بـ أمازون قبل كود التوفير
-                msg += f"❌ كان {round(base_p)} ريال \n"
-                msg += f"✅ والان {discounted_price} ريال 🤩\n\n"
-                msg += "🔹 يشملها خصم اسبوع التوفير20٪ \n\n"
-            except:
-                if price_before and price_now:
-                    msg += f"❌ كان {round(float(price_before))} ريال \n"
-                    msg += f"✅ والان {round(float(price_now))} ريال 🤩\n\n"
-                elif price_now:
-                    msg += f"✅ والان {round(float(price_now))} ريال 🤩\n\n"
-        else:
-            # إذا ما في عرض توفير، يطبع الأسعار الطبيعية بشكل نظيف ومقرب
-            if price_before and price_now:
-                msg += f"❌ كان {round(float(price_before))} ريال \n"
-                msg += f"✅ والان {round(float(price_now))} ريال 🤩\n\n"
-            elif price_now:
-                msg += f"✅ والان {round(float(price_now))} ريال 🤩\n\n"
+        # طباعة الأسعار المستخرجة من أمازون مباشرة بدون أي تعديل أو حسبة برمجية
+        if price_before and price_now:
+            msg += f"❌ كان {price_before} ريال \n"
+            msg += f"✅ والان {price_now} ريال 🤩\n\n"
+        elif price_now:
+            msg += f"✅ والان {price_now} ريال 🤩\n\n"
+            
+        # إذا لقط وجود كوبون أو عرض ترويجي، يضيف الجملة الثابتة فوراً كإعلان
+        if auto_offers:
+            msg += "🔹 يشملها خصم اسبوع التوفير20٪ \n\n"
         
         msg += f"{link}"
 
