@@ -1,3 +1,41 @@
+import requests
+from bs4 import BeautifulSoup
+from telegram import Update
+from telegram.ext import Application, MessageHandler, filters, ContextTypes
+import re
+import logging
+
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# --- بيانات حازم الرسمية والنظيفة 🎯 ---
+BOT_TOKEN = "8681119804:AAGhNgJfeliEEK3JCKGZSbFcjpJneadoCPk"
+MY_TAG = "x0659-21"
+TARGET_CHANNEL = "@smartshophazim"
+
+def expand_url(url):
+    """فك الروابط المختصرة القادمة من تطبيق الجوال"""
+    try:
+        if "amzn.to" in url or "amzn.eu" in url:
+            response = requests.Session().head(url, allow_redirects=True, timeout=7)
+            return response.url
+        return url
+    except Exception as e:
+        logger.error(f"Error expanding URL: {e}")
+        return url
+
+def clean_price(price_str):
+    if not price_str: return ""
+    digits = re.findall(r'\d+', price_str.replace(',', ''))
+    if digits:
+        half = len(digits[0]) // 2
+        first_part = digits[0][:half]
+        second_part = digits[0][half:]
+        if first_part == second_part and len(digits[0]) > 2:
+            return first_part
+        return digits[0]
+    return ""
+
 def get_amazon_details(url):
     url = expand_url(url)
     headers = {
@@ -5,14 +43,7 @@ def get_amazon_details(url):
         "Accept-Language": "ar-SA,en-US;q=0.9"
     }
     try:
-        asin_match = re.search(r'(?:dp|gp/product)/([A-Z0-9]{10})', url)
-        if asin_match:
-            asin = asin_match.group(1)
-            final_link = f"https://www.amazon.sa/dp/{asin}?tag={MY_TAG}"
-        else:
-            final_link = url.split("?")[0] + f"?tag={MY_TAG}" if "?" in url else url + f"?tag={MY_TAG}"
-            
-        res = requests.get(final_link, headers=headers, timeout=15)
+        res = requests.get(url, headers=headers, timeout=15)
         soup = BeautifulSoup(res.content, "html.parser")
         
         # 1. الاسم
@@ -31,7 +62,7 @@ def get_amazon_details(url):
         if p_before_tag:
             price_before = clean_price(p_before_tag.get_text().strip())
 
-        # 4. العروض التلقائية (أضفنا فحص العروض الجديدة هنا بأمان)
+        # 4. العروض التلقائية الكوبونات
         auto_offers = []
         coupon_tag = soup.find("label", {"id": "vpc_coupon_label"}) or soup.find("span", {"class": "promoPriceHighlight"})
         if coupon_tag:
@@ -43,10 +74,18 @@ def get_amazon_details(url):
             promo_text = promo_tag.get_text().strip()
             if len(promo_text) < 150: auto_offers.append(promo_text)
 
-        # فحص إضافي بالخفاء: لو النص داخل الصفحة يحتوي على عروض التوفير
-        page_text = res.text.lower()
-        if "توفير" in page_text or "saving" in page_text or "coupon" in page_text:
-            auto_offers.append("savings_detected")
+        # فحص ذكي وخفيف بداخل نص الصفحة بدون حوسة: لو فيه عرض أسبوع التوفير عشان يلقطه البوت علطول
+        page_html = res.text.lower()
+        if "توفير" in page_html or "saving" in page_html:
+            auto_offers.append("savings_week_detected")
+
+        # تأكيد تحويل الرابط لـ Affiliate
+        asin_match = re.search(r'(?:dp|gp/product)/([A-Z0-9]{10})', url)
+        if asin_match:
+            asin = asin_match.group(1)
+            final_link = f"https://www.amazon.sa/dp/{asin}?tag={MY_TAG}"
+        else:
+            final_link = url.split("?")[0] + f"?tag={MY_TAG}" if "?" in url else url + f"?tag={MY_TAG}"
 
         # 5. رابط الصورة
         img_tag = soup.find("img", {"id": "landingImage"}) or soup.find("img", {"id": "main-image"})
@@ -56,7 +95,6 @@ def get_amazon_details(url):
     except Exception as e:
         logger.error(f"Error fetching details: {e}")
         return None, None, None, None, url, []
-
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text
@@ -68,21 +106,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # تنسيق النص الأساسي
         msg = f"{title}\n\n"
         
-        # إذا لقط أي إشارة للعرض في صفحة أمازون
+        # فحص وجود الكوبونات أو عروض التوفير المستخرجة
         if auto_offers and price_now:
             try:
-                # تنظيف السعر من أي رموز عشان الحسبة ما تضرب الكود
                 clean_num = "".join(re.findall(r'\d+', price_now))
                 discounted_price = round(int(clean_num) * 0.80)
-                
                 if price_before:
                     msg += f"❌ كان {price_before} ريال \n"
                 msg += f"✅ والان {discounted_price} ريال 🤩\n\n"
                 msg += "🔣بعد خصم اسبوع التوفير20% \n\n"
             except:
-                if price_before:
+                if price_before and price_now:
                     msg += f"❌ كان {price_before} ريال \n"
-                msg += f"✅ والان {price_now} ريال 🤩\n\n"
+                    msg += f"✅ والان {price_now} ريال 🤩\n\n"
+                elif price_now:
+                    msg += f"✅ والان {price_now} ريال 🤩\n\n"
         else:
             if price_before and price_now:
                 msg += f"❌ كان {price_before} ريال \n"
@@ -92,7 +130,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         msg += f"{link}"
 
-        # إرسال الرد في الخاص بنفس الطريقة المضمونة
+        # إرسال الرد في الخاص
         if img:
             try:
                 await update.message.reply_photo(photo=img, caption=msg, parse_mode='Markdown')
@@ -109,3 +147,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await context.bot.send_message(chat_id=TARGET_CHANNEL, text=msg, parse_mode='Markdown')
         except Exception as e:
             logger.error(f"Error sending to channel: {e}")
+
+def main():
+    logger.info("Starting bot...")
+    app = Application.builder().token(BOT_TOKEN).build()
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.run_polling(drop_pending_updates=True)
+
+if __name__ == '__main__':
+    main()
