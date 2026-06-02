@@ -1,3 +1,41 @@
+import requests
+from bs4 import BeautifulSoup
+from telegram import Update
+from telegram.ext import Application, MessageHandler, filters, ContextTypes
+import re
+import logging
+
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# --- بيانات حازم الرسمية والنظيفة 🎯 ---
+BOT_TOKEN = "8681119804:AAGhNgJfeliEEK3JCKGZSbFcjpJneadoCPk"
+MY_TAG = "x0659-21"
+TARGET_CHANNEL = "@smartshophazim"
+
+def expand_url(url):
+    """فك الروابط المختصرة القادمة من تطبيق الجوال"""
+    try:
+        if "amzn.to" in url or "amzn.eu" in url:
+            response = requests.Session().head(url, allow_redirects=True, timeout=7)
+            return response.url
+        return url
+    except Exception as e:
+        logger.error(f"Error expanding URL: {e}")
+        return url
+
+def clean_price(price_str):
+    if not price_str: return ""
+    digits = re.findall(r'\d+', price_str.replace(',', ''))
+    if digits:
+        half = len(digits[0]) // 2
+        first_part = digits[0][:half]
+        second_part = digits[0][half:]
+        if first_part == second_part and len(digits[0]) > 2:
+            return first_part
+        return digits[0]
+    return ""
+
 def get_amazon_details(url):
     url = expand_url(url)
     headers = {
@@ -19,7 +57,7 @@ def get_amazon_details(url):
         title_tag = soup.find("span", {"id": "productTitle"})
         title = title_tag.get_text().strip() if title_tag else "منتج من أمازون"
         
-        # 2. السعر الحالي - فحص دقيق داخل صندوق السعر الرئيسي لمنع لقط "قيمة التوفير" بالخطأ 🎯
+        # 2. السعر الحالي - حظر السعر الغلط
         price_now = ""
         price_inside_box = soup.find("div", {"id": "apex_desktop"})
         if price_inside_box:
@@ -27,7 +65,6 @@ def get_amazon_details(url):
             if p_tag:
                 price_now = clean_price(p_tag.get_text().strip())
                 
-        # لو ما لقى داخل الصندوق، يرجع للتاغ العادي كخيار احتياطي
         if not price_now:
             p_now_tag = soup.find("span", {"class": "a-price-whole"})
             if p_now_tag:
@@ -59,3 +96,60 @@ def get_amazon_details(url):
     except Exception as e:
         logger.error(f"Error fetching details: {e}")
         return None, None, None, None, url, []
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    url = update.message.text
+    if "amazon" in url or "amzn" in url:
+        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+        
+        title, price_now, price_before, img, link, auto_offers = get_amazon_details(url)
+        
+        # تنسيق النص الأساسي
+        msg = f"{title}\n\n"
+        
+        # طباعة الأسعار المستخرجة
+        if price_before and price_now:
+            msg += f"❌ كان {price_before} ريال \n"
+            msg += f"✅ والان {price_now} ريال 🤩\n\n"
+        elif price_now:
+            msg += f"✅ والان {price_now} ريال 🤩\n\n"
+            
+        # فحص أمني: نتأكد إن العروض ما فيها النص المستفز حق البوت الثاني
+        has_real_offer = False
+        for offer in auto_offers:
+            if "to use this bot" in offer.lower() or "a_toolsx" in offer.lower():
+                continue # تخطي النص الخبيث واشطب عليه
+            has_real_offer = True
+
+        # إذا لقى عروض حقيقية ونظيفة، يطبع جملتك الثابتة
+        if has_real_offer:
+            msg += "🔹 يشملها خصم اسبوع التوفير20٪ \n\n"
+        
+        msg += f"{link}"
+
+        # إرسال الرد في الخاص
+        if img:
+            try:
+                await update.message.reply_photo(photo=img, caption=msg, parse_mode='Markdown')
+            except:
+                await update.message.reply_text(msg, parse_mode='Markdown')
+        else:
+            await update.message.reply_text(msg, parse_mode='Markdown')
+
+        # إرسال نفس الرسالة تلقائياً لقناتك المستهدفة
+        try:
+            if img:
+                await context.bot.send_photo(chat_id=TARGET_CHANNEL, photo=img, caption=msg, parse_mode='Markdown')
+            else:
+                await context.bot.send_message(chat_id=TARGET_CHANNEL, text=msg, parse_mode='Markdown')
+        except Exception as e:
+            logger.error(f"Error sending to channel: {e}")
+
+def main():
+    logger.info("Starting bot...")
+    app = Application.builder().token(BOT_TOKEN).build()
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.run_polling(drop_pending_updates=True)
+
+if __name__ == '__main__':
+    main()
