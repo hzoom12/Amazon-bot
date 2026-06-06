@@ -102,8 +102,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif price_now:
             msg += f"✅ والان {price_now} ريال 🤩\n\n"
             
-        # إضافة الجملة الترويجية الجديدة بشكل ثابت ومضمون لكل المنتجات 🎯
-        msg += "✨ كودي في المثبتة بيخصم 15٪ \n\n"
+        # إضافة العبارات الترويجية الجديدة بشكل ثابت ومضمون لكل المنتجات 🎯
+        msg += "✨ كودي بيخصم 15٪ \n\n"
+        msg += "🔅الكود موجود هنا 👇🏽\n"
+        msg += "https://amzn.to/3Qk6Q6Jnn"
         
         # إرجاع نفس الرابط الذي أرسلته أنت للبوت (المختصر والمرتب)
         msg += f"{original_url}"
