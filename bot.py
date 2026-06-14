@@ -103,13 +103,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             msg += f"✅ والان {price_now} ريال 🤩\n\n"
             
         # 1. جملة الخصم وتحتها رابط المنتج مباشرة 🛒
-        msg += "✨ كودي بيخصم 15٪ \n"
         msg += f"{original_url}\n\n"
-        
-        # 2. جملة الكود الثابتة وتحتها رابط قناتك في النهاية 🔅
-        msg += "🔅الكود موجود هنا 👇🏽\n"
-        msg += "https://amzn.to/3Qk6Q6J"
-
         # إرسال الرد في الخاص
         if img:
             try:
