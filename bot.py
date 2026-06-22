@@ -14,9 +14,8 @@ MY_TAG = "x0659-21"
 TARGET_CHANNEL = "@smartshophazim"
 
 def expand_url(url):
-    """فك الروابط المختصرة بجميع أنواعها (بما فيها الدومين الجديد لامازون)"""
+    """فك الروابط المختصرة بجميع أنواعها"""
     try:
-        # إضافة الدومين الجديد link.amazon للحظر والفك 🎯
         if "amzn.to" in url or "amzn.eu" in url or "link.amazon" in url:
             response = requests.Session().head(url, allow_redirects=True, timeout=7)
             return response.url
@@ -44,11 +43,16 @@ def get_amazon_details(url):
         "Accept-Language": "ar-SA,en-US;q=0.9"
     }
     try:
-        # البحث عن كود المنتج (ASIN) المكون من 10 خانات
+        # 🎯 فحص ذكي: لو الرابط من الدومين الجديد وما انفك، نستخرج الـ ASIN من الرابط المختصر نفسه مباشرة!
         asin_match = re.search(r'(?:dp|gp/product)/([A-Z0-9]{10})', expanded_url)
+        
+        if not asin_match and "link.amazon" in url:
+            # روابط link.amazon يكون الكود في نهايتها مباشرة مثل link.amazon/B0h5krZYh
+            asin_match = re.search(r'link\.amazon/([A-Z0-9]{9,10})', url)
+
         if asin_match:
             asin = asin_match.group(1)
-            # بناء الرابط القياسي المضمون للواتساب والفاحص 🚀
+            # بناء الرابط القياسي النظيف المعتمد للواتساب والفاحص 🚀
             final_link = f"https://www.amazon.sa/dp/{asin}?tag={MY_TAG}"
         else:
             clean_base = expanded_url.split("?")[0]
@@ -106,7 +110,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif price_now:
             msg += f"✅ والان {price_now} ريال 🤩\n\n"
             
-        # يطبع الرابط القياسي النظيف المتوافق مع الواتساب والفاحص
+        # طباعة الرابط القياسي المضمون للواتساب والفاحص السعودي 🇸🇦
         msg += f"{link}"
 
         # إرسال الرد في الخاص
