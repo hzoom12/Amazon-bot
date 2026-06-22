@@ -103,7 +103,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             msg += f"✅ والان {price_now} ريال 🤩\n\n"
             
         # إضافة الجملة الترويجية بشكل ثابت ومضمون لكل المنتجات بدون فحص معقد 🎯
-        msg += "🔹 يشملها خصم اسبوع التوفير20٪ \n\n"
+        msg += 
         
         msg += f"{link}"
 
