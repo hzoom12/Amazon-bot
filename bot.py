@@ -102,9 +102,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif price_now:
             msg += f"✅ والان {price_now} ريال 🤩\n\n"
             
-        # إضافة الجملة الترويجية بشكل ثابت ومضمون لكل المنتجات بدون فحص معقد 🎯
-        msg += 
+        # تم شطب العبارة الترويجية بنجاح 🎯
         
+        # يطبع الرابط الجديد المعدل بالتاغ الخاص بك
         msg += f"{link}"
 
         # إرسال الرد في الخاص
