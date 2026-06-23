@@ -14,13 +14,10 @@ MY_TAG = "x0659-21"
 TARGET_CHANNEL = "@smartshophazim"
 
 def expand_url(url):
-    """فك الروابط المختصرة فقط، وتخطي الروابط الطويلة منعاً للتعليق 🚀"""
+    """فك الروابط المختصرة فقط"""
     try:
-        # إذا كان الرابط طويلاً ومباشراً من أمازون، لا داعي لعمل طلب شبكة لفك الاختصار
         if "amazon.sa" in url or "amazon.com" in url:
             return url
-            
-        # فك الاختصار فقط للروابط المختصرة المعروفة
         if "amzn.to" in url or "amzn.eu" in url or "link.amazon" in url:
             response = requests.Session().head(url, allow_redirects=True, timeout=5)
             return response.url
@@ -43,26 +40,30 @@ def clean_price(price_str):
 
 def get_amazon_details(url):
     expanded_url = expand_url(url)
+    
+    # هيدرز قوية ومحدثة لضمان استجابة أمازون للروابط الطويلة والمختصرة 🚀
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
-        "Accept-Language": "ar-SA,en-US;q=0.9"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept-Language": "ar-SA,ar;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "Upgrade-Insecure-Requests": "1"
     }
+    
     try:
-        # البحث عن كود المنتج ASIN بداخل الرابط المفرود
-        asin_match = re.search(r'(?:dp|gp/product)/([A-Z0-9]{10})', expanded_url)
-        
-        # دعم روابط link.amazon لو فشل الفك المباشر
-        if not asin_match and "link.amazon" in url:
-            asin_match = re.search(r'link\.amazon/([A-Z0-9]{9,10})', url)
+        # استخراج كود الـ ASIN بمرونة من أي مكان بالرابط (طويل أو مختصر)
+        asin_match = re.search(r'(?:dp|gp/product|link\.amazon)/([A-Z0-9]{9,10})', expanded_url)
+        if not asin_match:
+            asin_match = re.search(r'(?:dp|gp/product|link\.amazon)/([A-Z0-9]{9,10})', url)
 
         if asin_match:
             asin = asin_match.group(1)
-            final_link = f"https://www.amazon.sa/dp/{asin}?tag={MY_TAG}"
+            # بناء رابط نظيف داخلياً لعمل الـ Scrape بدون تعقيدات الرابط الطويل المعلق
+            fetch_url = f"https://www.amazon.sa/dp/{asin}?tag={MY_TAG}"
         else:
             clean_base = expanded_url.split("?")[0]
-            final_link = f"{clean_base}?tag={MY_TAG}"
+            fetch_url = f"{clean_base}?tag={MY_TAG}"
             
-        res = requests.get(final_link, headers=headers, timeout=12)
+        res = requests.get(fetch_url, headers=headers, timeout=10)
         soup = BeautifulSoup(res.content, "html.parser")
         
         # 1. الاسم
@@ -100,28 +101,23 @@ def get_amazon_details(url):
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     original_url = update.message.text.strip()
     
-    # فحص موسع ليدعم جميع أنواع روابط أمازون
     if any(domain in original_url for domain in ["amazon", "amzn", "link.amazon"]):
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
         
-        # جلب البيانات بالخلفية
         title, price_now, price_before, img = get_amazon_details(original_url)
         
-        # 🚀 طباعة الرابط الأصلي الذي أرسلته في أول سطر للواتساب
+        # 🚀 طباعة الرابط الأصلي كما هو في السطر الأول لضمان توافق الواتساب
         msg = f"{original_url}\n\n"
         msg += f"{title}\n\n"
         
-        # طباعة الأسعار المستخرجة
         if price_before and price_now:
             msg += f"❌ كان {price_before} ريال \n"
             msg += f"✅ والان {price_now} ريال 🤩\n\n"
         elif price_now:
             msg += f"✅ والان {price_now} ريال 🤩\n\n"
             
-        # إضافة الجملة الترويجية
         msg += "✨ لاتنسى كودي + خصم الراجحي \n"
 
-        # إرسال الرد في الخاص
         if img:
             try:
                 await update.message.reply_photo(photo=img, caption=msg, parse_mode='Markdown')
@@ -130,7 +126,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text(msg, parse_mode='Markdown')
 
-        # إرسال نفس الرسالة تلقائياً لقناتك المستهدفة
         try:
             if img:
                 await context.bot.send_photo(chat_id=TARGET_CHANNEL, photo=img, caption=msg, parse_mode='Markdown')
