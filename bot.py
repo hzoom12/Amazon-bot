@@ -14,7 +14,7 @@ MY_TAG = "x0659-21"
 TARGET_CHANNEL = "@smartshophazim"
 
 def expand_url(url):
-    """فك الروابط المختصرة بجميع أنواعها بما فيها الدومين الجديد"""
+    """فك الروابط المختصرة بجميع أنواعها في الخلفية"""
     try:
         if "amzn.to" in url or "amzn.eu" in url or "link.amazon" in url:
             response = requests.Session().head(url, allow_redirects=True, timeout=7)
@@ -43,7 +43,7 @@ def get_amazon_details(url):
         "Accept-Language": "ar-SA,en-US;q=0.9"
     }
     try:
-        # البحث عن كود المنتج ASIN
+        # البحث عن كود المنتج ASIN بداخل الرابط المفرود
         asin_match = re.search(r'(?:dp|gp/product)/([A-Z0-9]{10})', expanded_url)
         
         # دعم روابط link.amazon لو فشل الفك المباشر
@@ -87,20 +87,21 @@ def get_amazon_details(url):
         img_tag = soup.find("img", {"id": "landingImage"}) or soup.find("img", {"id": "main-image"})
         img_url = img_tag.get("src") if img_tag else ""
 
-        return title, price_now, price_before, img_url, final_link
+        return title, price_now, price_before, img_url
     except Exception as e:
         logger.error(f"Error fetching details: {e}")
-        return None, None, None, None, expanded_url
+        return None, None, None, None
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    url = update.message.text.strip()
-    if "amazon" in url or "amzn" in url or "link.amazon" in url:
+    original_url = update.message.text.strip()
+    if "amazon" in original_url or "amzn" in original_url or "link.amazon" in original_url:
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
         
-        title, price_now, price_before, img, link = get_amazon_details(url)
+        # جلب البيانات بالخلفية
+        title, price_now, price_before, img = get_amazon_details(original_url)
         
-        # 🚀 الترتيب السحري الجديد للواتساب: الرابط في أول سطر لسحب المعاينة فوراً
-        msg = f"{link}\n\n"
+        # 🚀 طباعة الرابط الأصلي (المختصر) بدون تعديل في أول سطر للواتساب
+        msg = f"{original_url}\n\n"
         msg += f"{title}\n\n"
         
         # طباعة الأسعار المستخرجة
@@ -110,7 +111,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif price_now:
             msg += f"✅ والان {price_now} ريال 🤩\n\n"
             
-        # إضافة الجملة الترويجية الجديدة
+        # إضافة الجملة الترويجية
         msg += "✨ لاتنسى كودي + خصم الراجحي \n"
 
         # إرسال الرد في الخاص
