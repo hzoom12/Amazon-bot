@@ -14,9 +14,9 @@ MY_TAG = "x0659-21"
 TARGET_CHANNEL = "@smartshophazim"
 
 def expand_url(url):
-    """فك الروابط المختصرة بجميع أنواعها"""
+    """فك الروابط المختصرة القادمة من تطبيق الجوال"""
     try:
-        if "amzn.to" in url or "amzn.eu" in url or "link.amazon" in url:
+        if "amzn.to" in url or "amzn.eu" in url:
             response = requests.Session().head(url, allow_redirects=True, timeout=7)
             return response.url
         return url
@@ -43,20 +43,12 @@ def get_amazon_details(url):
         "Accept-Language": "ar-SA,en-US;q=0.9"
     }
     try:
-        # 🎯 فحص ذكي: لو الرابط من الدومين الجديد وما انفك، نستخرج الـ ASIN من الرابط المختصر نفسه مباشرة!
         asin_match = re.search(r'(?:dp|gp/product)/([A-Z0-9]{10})', expanded_url)
-        
-        if not asin_match and "link.amazon" in url:
-            # روابط link.amazon يكون الكود في نهايتها مباشرة مثل link.amazon/B0h5krZYh
-            asin_match = re.search(r'link\.amazon/([A-Z0-9]{9,10})', url)
-
         if asin_match:
             asin = asin_match.group(1)
-            # بناء الرابط القياسي النظيف المعتمد للواتساب والفاحص 🚀
             final_link = f"https://www.amazon.sa/dp/{asin}?tag={MY_TAG}"
         else:
-            clean_base = expanded_url.split("?")[0]
-            final_link = f"{clean_base}?tag={MY_TAG}"
+            final_link = expanded_url.split("?")[0] + f"?tag={MY_TAG}" if "?" in expanded_url else expanded_url + f"?tag={MY_TAG}"
             
         res = requests.get(final_link, headers=headers, timeout=15)
         soup = BeautifulSoup(res.content, "html.parser")
@@ -65,7 +57,7 @@ def get_amazon_details(url):
         title_tag = soup.find("span", {"id": "productTitle"})
         title = title_tag.get_text().strip() if title_tag else "منتج من أمازون"
         
-        # 2. السعر الحالي
+        # 2. السعر الحالي - من داخل صندوق السعر الرئيسي
         price_now = ""
         price_inside_box = soup.find("div", {"id": "apex_desktop"})
         if price_inside_box:
@@ -88,17 +80,17 @@ def get_amazon_details(url):
         img_tag = soup.find("img", {"id": "landingImage"}) or soup.find("img", {"id": "main-image"})
         img_url = img_tag.get("src") if img_tag else ""
 
-        return title, price_now, price_before, img_url, final_link
+        return title, price_now, price_before, img_url
     except Exception as e:
         logger.error(f"Error fetching details: {e}")
-        return None, None, None, None, expanded_url
+        return None, None, None, None
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    url = update.message.text.strip()
-    if "amazon" in url or "amzn" in url or "link.amazon" in url:
+    original_url = update.message.text.strip()
+    if "amazon" in original_url or "amzn" in original_url:
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
         
-        title, price_now, price_before, img, link = get_amazon_details(url)
+        title, price_now, price_before, img = get_amazon_details(original_url)
         
         # تنسيق النص الأساسي
         msg = f"{title}\n\n"
@@ -110,8 +102,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif price_now:
             msg += f"✅ والان {price_now} ريال 🤩\n\n"
             
-        # طباعة الرابط القياسي المضمون للواتساب والفاحص السعودي 🇸🇦
-        msg += f"{link}"
+        # إضافة الجملة الترويجية الجديدة بشكل ثابت ومضمون لكل المنتجات 🎯
+        msg += "✨لاتنسى كودي + خصم الراجحي \n\n"
+        
+        # إرجاع نفس الرابط الذي أرسلته أنت للبوت (المختصر والمرتب)
+        msg += f"{original_url}"
 
         # إرسال الرد في الخاص
         if img:
