@@ -14,10 +14,15 @@ MY_TAG = "x0659-21"
 TARGET_CHANNEL = "@smartshophazim"
 
 def expand_url(url):
-    """فك الروابط المختصرة بجميع أنواعها في الخلفية"""
+    """فك الروابط المختصرة فقط، وتخطي الروابط الطويلة منعاً للتعليق 🚀"""
     try:
+        # إذا كان الرابط طويلاً ومباشراً من أمازون، لا داعي لعمل طلب شبكة لفك الاختصار
+        if "amazon.sa" in url or "amazon.com" in url:
+            return url
+            
+        # فك الاختصار فقط للروابط المختصرة المعروفة
         if "amzn.to" in url or "amzn.eu" in url or "link.amazon" in url:
-            response = requests.Session().head(url, allow_redirects=True, timeout=7)
+            response = requests.Session().head(url, allow_redirects=True, timeout=5)
             return response.url
         return url
     except Exception as e:
@@ -57,7 +62,7 @@ def get_amazon_details(url):
             clean_base = expanded_url.split("?")[0]
             final_link = f"{clean_base}?tag={MY_TAG}"
             
-        res = requests.get(final_link, headers=headers, timeout=15)
+        res = requests.get(final_link, headers=headers, timeout=12)
         soup = BeautifulSoup(res.content, "html.parser")
         
         # 1. الاسم
@@ -94,13 +99,15 @@ def get_amazon_details(url):
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     original_url = update.message.text.strip()
-    if "amazon" in original_url or "amzn" in original_url or "link.amazon" in original_url:
+    
+    # فحص موسع ليدعم جميع أنواع روابط أمازون
+    if any(domain in original_url for domain in ["amazon", "amzn", "link.amazon"]):
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
         
         # جلب البيانات بالخلفية
         title, price_now, price_before, img = get_amazon_details(original_url)
         
-        # 🚀 طباعة الرابط الأصلي (المختصر) بدون تعديل في أول سطر للواتساب
+        # 🚀 طباعة الرابط الأصلي الذي أرسلته في أول سطر للواتساب
         msg = f"{original_url}\n\n"
         msg += f"{title}\n\n"
         
