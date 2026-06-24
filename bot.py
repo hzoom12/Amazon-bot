@@ -8,18 +8,22 @@ import logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# --- بيانات حازم الرسمية والنظيفة 🎯 ---
+# --- بيانات حازم الرسمية🎯 ---
 BOT_TOKEN = "8681119804:AAGhNgJfeliEEK3JCKGZSbFcjpJneadoCPk"
 MY_TAG = "x0659-21"
 TARGET_CHANNEL = "@smartshophazim"
 
 def expand_url(url):
-    """فك الروابط المختصرة فقط"""
     try:
         if "amazon.sa" in url or "amazon.com" in url:
             return url
         if "amzn.to" in url or "amzn.eu" in url or "link.amazon" in url:
-            response = requests.Session().head(url, allow_redirects=True, timeout=5)
+            # استخدام session يحاكي المتصفح لفك التوجيه بأمان
+            session = requests.Session()
+            session.headers.update({
+                "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1"
+            })
+            response = session.head(url, allow_redirects=True, timeout=5)
             return response.url
         return url
     except Exception as e:
@@ -41,23 +45,22 @@ def clean_price(price_str):
 def get_amazon_details(url):
     expanded_url = expand_url(url)
     
-    # هيدرز قوية ومحدثة لضمان استجابة أمازون للروابط الطويلة والمختصرة 🚀
+    # هيدرز احترافية جداً تحاكي متصفح سفاري على الآيفون للالتفاف على الحظر 📱
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept-Language": "ar-SA,ar;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-        "Upgrade-Insecure-Requests": "1"
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "ar-SA,ar;q=0.9",
+        "Referer": "https://www.google.com/",
+        "Connection": "keep-alive"
     }
     
     try:
-        # استخراج كود الـ ASIN بمرونة من أي مكان بالرابط (طويل أو مختصر)
         asin_match = re.search(r'(?:dp|gp/product|link\.amazon)/([A-Z0-9]{9,10})', expanded_url)
         if not asin_match:
             asin_match = re.search(r'(?:dp|gp/product|link\.amazon)/([A-Z0-9]{9,10})', url)
 
         if asin_match:
             asin = asin_match.group(1)
-            # بناء رابط نظيف داخلياً لعمل الـ Scrape بدون تعقيدات الرابط الطويل المعلق
             fetch_url = f"https://www.amazon.sa/dp/{asin}?tag={MY_TAG}"
         else:
             clean_base = expanded_url.split("?")[0]
@@ -66,37 +69,49 @@ def get_amazon_details(url):
         res = requests.get(fetch_url, headers=headers, timeout=10)
         soup = BeautifulSoup(res.content, "html.parser")
         
-        # 1. الاسم
+        # 1. استخراج الاسم بطرق متعددة (لو حجب الأول يلقط الثاني)
+        title = "منتج من أمازون"
         title_tag = soup.find("span", {"id": "productTitle"})
-        title = title_tag.get_text().strip() if title_tag else "منتج من أمازون"
+        if title_tag:
+            title = title_tag.get_text().strip()
+        else:
+            # طريقة بديلة من الـ Meta tags لو أمازون عطتنا صفحة حماية
+            meta_title = soup.find("meta", {"name": "title"}) or soup.find("meta", {"property": "og:title"})
+            if meta_title and meta_title.get("content"):
+                title = meta_title.get("content").split(":")[0].strip()
         
         # 2. السعر الحالي
         price_now = ""
-        price_inside_box = soup.find("div", {"id": "apex_desktop"})
+        price_inside_box = soup.find("div", {"id": "apex_desktop"}) or soup.find("div", {"id": "corePrice_desktop"})
         if price_inside_box:
             p_tag = price_inside_box.find("span", {"class": "a-offscreen"}) or price_inside_box.find("span", {"class": "a-price-whole"})
             if p_tag:
                 price_now = clean_price(p_tag.get_text().strip())
                 
         if not price_now:
-            p_now_tag = soup.find("span", {"class": "a-price-whole"})
-            if p_now_tag:
-                price_now = clean_price(p_now_tag.get_text().strip())
+            for c in ["a-price-whole", "a-price", "apexPriceToPay"]:
+                p_tag = soup.find("span", {"class": c})
+                if p_tag:
+                    price_now = clean_price(p_tag.get_text().strip())
+                    if price_now: break
 
         # 3. السعر قبل
         price_before = ""
-        p_before_tag = soup.find("span", {"class": "basisPrice"}) or soup.find("span", {"class": "a-text-strike"})
+        p_before_tag = soup.find("span", {"class": "basisPrice"}) or soup.find("span", {"class": "a-text-strike"}) or soup.find("span", {"class": "listPrice"})
         if p_before_tag:
             price_before = clean_price(p_before_tag.get_text().strip())
 
         # 5. رابط الصورة
-        img_tag = soup.find("img", {"id": "landingImage"}) or soup.find("img", {"id": "main-image"})
+        img_tag = soup.find("img", {"id": "landingImage"}) or soup.find("img", {"id": "main-image"}) or soup.find("img", {"id": "imgBlkFront"})
         img_url = img_tag.get("src") if img_tag else ""
+        if not img_url:
+            meta_img = soup.find("meta", {"property": "og:image"})
+            if meta_img: img_url = meta_img.get("content", "")
 
         return title, price_now, price_before, img_url
     except Exception as e:
         logger.error(f"Error fetching details: {e}")
-        return None, None, None, None
+        return "منتج من أمازون", None, None, None
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     original_url = update.message.text.strip()
@@ -106,7 +121,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         title, price_now, price_before, img = get_amazon_details(original_url)
         
-        # 🚀 طباعة الرابط الأصلي كما هو في السطر الأول لضمان توافق الواتساب
+        # طباعة الرابط الأصلي في السطر الأول للواتساب 🚀
         msg = f"{original_url}\n\n"
         msg += f"{title}\n\n"
         
