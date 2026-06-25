@@ -14,10 +14,9 @@ MY_TAG = "x0659-21"
 TARGET_CHANNEL = "@smartshophazim"
 
 def expand_url(url):
-    """فك الروابط المختصرة القادمة من تطبيق الجوال (بما فيها الدومين الجديد)"""
+    """فك الروابط المختصرة القادمة من تطبيق الجوال"""
     try:
-        # أضفنا link.amazon هنا للتوافق مع التحديث الجديد
-        if "amzn.to" in url or "amzn.eu" in url or "link.amazon" in url:
+        if "amzn.to" in url or "amzn.eu" in url:
             response = requests.Session().head(url, allow_redirects=True, timeout=7)
             return response.url
         return url
@@ -44,11 +43,7 @@ def get_amazon_details(url):
         "Accept-Language": "ar-SA,en-US;q=0.9"
     }
     try:
-        # البحث عن كود المنتج ASIN بمرونة من الرابط المفرود أو الأصلي
         asin_match = re.search(r'(?:dp|gp/product)/([A-Z0-9]{10})', expanded_url)
-        if not asin_match and "link.amazon" in url:
-            asin_match = re.search(r'link\.amazon/([A-Z0-9]{9,10})', url)
-
         if asin_match:
             asin = asin_match.group(1)
             final_link = f"https://www.amazon.sa/dp/{asin}?tag={MY_TAG}"
@@ -62,7 +57,7 @@ def get_amazon_details(url):
         title_tag = soup.find("span", {"id": "productTitle"})
         title = title_tag.get_text().strip() if title_tag else "منتج من أمازون"
         
-        # 2. السعر الحالي
+        # 2. السعر الحالي - من داخل صندوق السعر الرئيسي
         price_now = ""
         price_inside_box = soup.find("div", {"id": "apex_desktop"})
         if price_inside_box:
@@ -92,16 +87,13 @@ def get_amazon_details(url):
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     original_url = update.message.text.strip()
-    
-    # فحص موسع ليدعم كل أنواع روابط أمازون المرسلة للبوت
-    if any(domain in original_url for domain in ["amazon", "amzn", "link.amazon"]):
+    if "amazon" in original_url or "amzn" in original_url:
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
         
         title, price_now, price_before, img = get_amazon_details(original_url)
         
-        # 🚀 الترتيب السحري للواتساب: الرابط الأصلي المختصر في أول سطر دون تعديل
-        msg = f"{original_url}\n\n"
-        msg += f"{title}\n\n"
+        # تنسيق النص الأساسي
+        msg = f"{title}\n\n"
         
         # طباعة الأسعار المستخرجة
         if price_before and price_now:
@@ -110,9 +102,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif price_now:
             msg += f"✅ والان {price_now} ريال 🤩\n\n"
             
-        # إضافة العبارة الترويجية بأسفل الرسالة
-        msg += "✨ لاتنسى كودي + خصم الراجحي \n"
-
+        # تم حذف عبارة أسبوع التوفير بنجاح 🎯
+        
+        # إرجاع نفس الرابط المختصر والمُرتب اللي نسخته أنت للبوت
+        msg += f"{original_url}"
+        msg += ✨كودي وخصم الراجحي بيخصم اكثر✨
         # إرسال الرد في الخاص
         if img:
             try:
