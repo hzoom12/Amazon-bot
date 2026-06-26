@@ -92,6 +92,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         title, price_now, price_before, img = get_amazon_details(original_url)
         
+        # تعريف النجمة بشكل آمن لحل مشكلة السنتكس بسيرفر ريندر
+        emoji_star = chr(0x2728)
+        
         # تنسيق النص الأساسي
         msg = f"{title}\n\n"
         
@@ -102,10 +105,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif price_now:
             msg += f"✅ والان {price_now} ريال 🤩\n\n"
             
-        # تم حذف عبارة أسبوع التوفير بنجاح 🎯
-        
         # إرجاع نفس الرابط المختصر والمُرتب اللي نسخته أنت للبوت
-        msg += f"{original_url}"
+        msg += f"{original_url}\n\n"
+        
+        # إضافة سطر الترويج الخاص بك بشكل نظيف وسليم
         msg += f"{emoji_star} لا تنسى كودي + خصم الراجحي \n"
 
         # إرسال الرد في الخاص
