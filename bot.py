@@ -106,7 +106,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # إرجاع نفس الرابط المختصر والمُرتب اللي نسخته أنت للبوت
         msg += f"{original_url}"
-        msg += كودي وخصم الراجحي بيخصم اكثر \u2728
+        msg += f"{emoji_star} لا تنسى كودي + خصم الراجحي \n"
+
         # إرسال الرد في الخاص
         if img:
             try:
