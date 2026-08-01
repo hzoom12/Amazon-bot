@@ -9,7 +9,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 
 # --- بيانات حازم الرسمية والنظيفة 🎯 ---
-BOT_TOKEN = "8681119804:AAFooQVDExTmKe7wSN-CzBMW50y-9qpQZDU"
+BOT_TOKEN = "8681119804:AAGqGiW_Hgi2u1XrcWbv7D521Y4w9Ev8Hto"
 MY_TAG = "x0659-21"
 TARGET_CHANNEL = "@smartshophazim"
 
