@@ -1,9 +1,10 @@
+import os
+import re
+import logging
 import requests
 from bs4 import BeautifulSoup
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
-import re
-import logging
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -92,40 +93,39 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         title, price_now, price_before, img = get_amazon_details(original_url)
         
-        # تعريف النجمة بشكل آمن لحل مشكلة السنتكس بسيرفر ريندر
         emoji_star = chr(0x2728)
         
         # تنسيق النص الأساسي
         msg = f"{title}\n\n"
         
-        # طباعة الأسعار المستخرجة
+        # طباعة الأسعار بتنسيق الواتساب (*) والإيموجي 🔥
         if price_before and price_now:
             msg += f"❌ كان {price_before} ريال \n"
-            msg += f"✅ والان {price_now} ريال 🤩\n\n"
+            msg += f"✅ *والان {price_now} ريال* 🔥\n\n"
         elif price_now:
-            msg += f"✅ والان {price_now} ريال 🤩\n\n"
+            msg += f"✅ *والان {price_now} ريال* 🔥\n\n"
             
-        # إرجاع نفس الرابط المختصر والمُرتب اللي نسخته أنت للبوت
+        # إرجاع نفس الرابط
         msg += f"{original_url}\n\n"
         
-        # إضافة سطر الترويج الخاص بك بشكل نظيف وسليم
+        # إضافة سطر الترويج
         msg += f"{emoji_star}   \n"
 
         # إرسال الرد في الخاص
         if img:
             try:
-                await update.message.reply_photo(photo=img, caption=msg, parse_mode='Markdown')
+                await update.message.reply_photo(photo=img, caption=msg)
             except:
-                await update.message.reply_text(msg, parse_mode='Markdown')
+                await update.message.reply_text(msg)
         else:
-            await update.message.reply_text(msg, parse_mode='Markdown')
+            await update.message.reply_text(msg)
 
-        # إرسال نفس الرسالة تلقائياً لقناتك المستهدفة
+        # إرسال نفس الرسالة لقناتك
         try:
             if img:
-                await context.bot.send_photo(chat_id=TARGET_CHANNEL, photo=img, caption=msg, parse_mode='Markdown')
+                await context.bot.send_photo(chat_id=TARGET_CHANNEL, photo=img, caption=msg)
             else:
-                await context.bot.send_message(chat_id=TARGET_CHANNEL, text=msg, parse_mode='Markdown')
+                await context.bot.send_message(chat_id=TARGET_CHANNEL, text=msg)
         except Exception as e:
             logger.error(f"Error sending to channel: {e}")
 
