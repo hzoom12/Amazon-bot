@@ -100,7 +100,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # طباعة الأسعار بتنسيق الواتساب (*) والإيموجي 🔥
         if price_before and price_now:
-            msg += f"❌ كان {price_before} ريال \n"
+            msg += f"❌ كان ~{price_before}~ ريال \n"
             msg += f"✅ *والان {price_now} ريال* 🔥\n\n"
         elif price_now:
             msg += f"✅ *والان {price_now} ريال* 🔥\n\n"
