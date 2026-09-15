@@ -10,8 +10,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 
 # --- البيانات 🎯 ---
-# ⚠️ قم بتغيير البوت توكن من BotFather فوراً لأن القديم تم كشفه
-BOT_TOKEN = "8681119804:AAEUxT-KGYU871uMXQr6VKW8ybnCQC1XA18"
+BOT_TOKEN ="8681119804:AAEUxT-KGYU871uMXQr6VKW8ybnCQC1XA18"
 MY_TAG = "x0659-21"
 TARGET_CHANNEL = "@smartshophazim"
 
@@ -30,17 +29,15 @@ def expand_url(url):
         return url
 
 def clean_price(price_str):
+    """تنظيف السعر وإرجاع الأرقام فقط بدون أجزاء عشرية أو فواصل"""
     if not price_str: return ""
-    # استخراج الأرقام فقط
-    digits = re.findall(r'\d+', price_str.replace(',', '').replace('.', ''))
-    if digits:
-        return digits[0]
-    return ""
+    # حذف أي فواصل أو نقاط أو رموز وأخذ الأرقام الصحيحة الأولى
+    clean = re.sub(r'[^\d]', '', price_str.split('.')[0])
+    return clean
 
 def get_amazon_details(url):
     expanded_url = expand_url(url)
     
-    # ترويسات متقدمة لتخطي حظر أمازون
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
         "Accept-Language": "ar-SA,ar;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -61,31 +58,27 @@ def get_amazon_details(url):
         res = session.get(final_link, headers=headers, timeout=15)
         soup = BeautifulSoup(res.content, "html.parser")
         
-        # 1. العنوان (محاولة أكثر من مسمى)
+        # 1. العنوان
         title_tag = soup.find("span", {"id": "productTitle"}) or soup.find("h1", {"id": "title"})
         title = title_tag.get_text().strip() if title_tag else "منتج من أمازون"
         
-        # 2. السعر الحالي
+        # 2. السعر الحالي (بدون فواصل أو أجزاء عشرية)
         price_now = ""
         price_whole = soup.find("span", {"class": "a-price-whole"})
-        price_fraction = soup.find("span", {"class": "a-price-fraction"})
-        
         if price_whole:
-            price_now = price_whole.get_text().replace('.', '').replace(',', '').strip()
-            if price_fraction:
-                price_now = f"{price_now}.{price_fraction.get_text().strip()}"
+            price_now = clean_price(price_whole.get_text())
         else:
             p_offscreen = soup.find("span", {"class": "a-offscreen"})
             if p_offscreen:
-                price_now = clean_price(p_offscreen.get_text().strip())
+                price_now = clean_price(p_offscreen.get_text())
 
-        # 3. السعر السابق
+        # 3. السعر السابق (بدون فواصل أو أجزاء عشرية)
         price_before = ""
         p_before_tag = soup.find("span", {"class": "a-text-price"}) or soup.find("span", {"class": "basisPrice"})
         if p_before_tag:
             offscreen = p_before_tag.find("span", {"class": "a-offscreen"})
             if offscreen:
-                price_before = clean_price(offscreen.get_text().strip())
+                price_before = clean_price(offscreen.get_text())
 
         # 4. رابط الصورة
         img_url = ""
@@ -93,17 +86,17 @@ def get_amazon_details(url):
         if img_tag:
             img_url = img_tag.get("data-old-hires") or img_tag.get("src") or ""
 
-        return title, price_now, price_before, img_url, final_link
+        return title, price_now, price_before, img_url
     except Exception as e:
         logger.error(f"Error fetching details: {e}")
-        return None, None, None, None, url
+        return None, None, None, None
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     original_url = update.message.text.strip()
     if "amazon" in original_url or "amzn" in original_url:
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
         
-        title, price_now, price_before, img, affiliate_url = get_amazon_details(original_url)
+        title, price_now, price_before, img = get_amazon_details(original_url)
         
         emoji_star = chr(0x2728)
         
@@ -115,8 +108,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif price_now:
             msg += f"✅ *والآن {price_now} ريال* 🔥\n\n"
             
-        # استخدام رابط الأفلييت بدلاً من الرابط الأصلي
-        msg += f"{affiliate_url}\n\n"
+        # إعادة الرابط الأصلي الذي تم إرساله من المستخدم بالضبط
+        msg += f"{original_url}\n\n"
         msg += f"{emoji_star}\n"
 
         # الإرسال للخاص
