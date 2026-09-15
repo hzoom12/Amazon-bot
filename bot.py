@@ -9,19 +9,16 @@ from telegram.ext import Application, MessageHandler, filters, ContextTypes
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# --- البيانات 🎯 ---
-BOT_TOKEN = "8681119804:AAEUxT-KGYU871uMXQr6VKW8ybnCQC1XA18"
+# --- بيانات حازم الرسمية والنظيفة 🎯 ---
+BOT_TOKEN = "8681119804:AAEUxT-KGYU871uMXQr6VKW8ybnCQC1XA18”
 MY_TAG = "x0659-21"
 TARGET_CHANNEL = "@smartshophazim"
 
 def expand_url(url):
     """فك الروابط المختصرة القادمة من تطبيق الجوال"""
     try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-        }
         if "amzn.to" in url or "amzn.eu" in url:
-            response = requests.Session().head(url, headers=headers, allow_redirects=True, timeout=10)
+            response = requests.Session().head(url, allow_redirects=True, timeout=7)
             return response.url
         return url
     except Exception as e:
@@ -29,23 +26,23 @@ def expand_url(url):
         return url
 
 def clean_price(price_str):
-    """تنظيف السعر وإرجاع الأرقام فقط بدون أجزاء عشرية أو فواصل"""
     if not price_str: return ""
-    # حذف أي فواصل أو نقاط أو رموز وأخذ الأرقام الصحيحة الأولى
-    clean = re.sub(r'[^\d]', '', price_str.split('.')[0])
-    return clean
+    digits = re.findall(r'\d+', price_str.replace(',', ''))
+    if digits:
+        half = len(digits[0]) // 2
+        first_part = digits[0][:half]
+        second_part = digits[0][half:]
+        if first_part == second_part and len(digits[0]) > 2:
+            return first_part
+        return digits[0]
+    return ""
 
 def get_amazon_details(url):
     expanded_url = expand_url(url)
-    
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        "Accept-Language": "ar-SA,ar;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-        "Device-Memory": "8",
-        "Viewport-Width": "1920"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
+        "Accept-Language": "ar-SA,en-US;q=0.9"
     }
-    
     try:
         asin_match = re.search(r'(?:dp|gp/product)/([A-Z0-9]{10})', expanded_url)
         if asin_match:
@@ -54,37 +51,35 @@ def get_amazon_details(url):
         else:
             final_link = expanded_url.split("?")[0] + f"?tag={MY_TAG}" if "?" in expanded_url else expanded_url + f"?tag={MY_TAG}"
             
-        session = requests.Session()
-        res = session.get(final_link, headers=headers, timeout=15)
+        res = requests.get(final_link, headers=headers, timeout=15)
         soup = BeautifulSoup(res.content, "html.parser")
         
-        # 1. العنوان
-        title_tag = soup.find("span", {"id": "productTitle"}) or soup.find("h1", {"id": "title"})
+        # 1. الاسم
+        title_tag = soup.find("span", {"id": "productTitle"})
         title = title_tag.get_text().strip() if title_tag else "منتج من أمازون"
         
-        # 2. السعر الحالي (بدون فواصل أو أجزاء عشرية)
+        # 2. السعر الحالي - من داخل صندوق السعر الرئيسي
         price_now = ""
-        price_whole = soup.find("span", {"class": "a-price-whole"})
-        if price_whole:
-            price_now = clean_price(price_whole.get_text())
-        else:
-            p_offscreen = soup.find("span", {"class": "a-offscreen"})
-            if p_offscreen:
-                price_now = clean_price(p_offscreen.get_text())
+        price_inside_box = soup.find("div", {"id": "apex_desktop"})
+        if price_inside_box:
+            p_tag = price_inside_box.find("span", {"class": "a-offscreen"}) or price_inside_box.find("span", {"class": "a-price-whole"})
+            if p_tag:
+                price_now = clean_price(p_tag.get_text().strip())
+                
+        if not price_now:
+            p_now_tag = soup.find("span", {"class": "a-price-whole"})
+            if p_now_tag:
+                price_now = clean_price(p_now_tag.get_text().strip())
 
-        # 3. السعر السابق (بدون فواصل أو أجزاء عشرية)
+        # 3. السعر قبل
         price_before = ""
-        p_before_tag = soup.find("span", {"class": "a-text-price"}) or soup.find("span", {"class": "basisPrice"})
+        p_before_tag = soup.find("span", {"class": "basisPrice"}) or soup.find("span", {"class": "a-text-strike"})
         if p_before_tag:
-            offscreen = p_before_tag.find("span", {"class": "a-offscreen"})
-            if offscreen:
-                price_before = clean_price(offscreen.get_text())
+            price_before = clean_price(p_before_tag.get_text().strip())
 
-        # 4. رابط الصورة
-        img_url = ""
-        img_tag = soup.find("img", {"id": "landingImage"}) or soup.find("img", {"id": "imgBlkFront"})
-        if img_tag:
-            img_url = img_tag.get("data-old-hires") or img_tag.get("src") or ""
+        # 5. رابط الصورة
+        img_tag = soup.find("img", {"id": "landingImage"}) or soup.find("img", {"id": "main-image"})
+        img_url = img_tag.get("src") if img_tag else ""
 
         return title, price_now, price_before, img_url
     except Exception as e:
@@ -100,19 +95,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         emoji_star = chr(0x2728)
         
+        # تنسيق النص الأساسي
         msg = f"{title}\n\n"
         
+        # طباعة الأسعار بتنسيق الواتساب (*) والإيموجي 🔥
         if price_before and price_now:
-            msg += f"❌ كان ~{price_before} ريال~\n"
-            msg += f"✅ *والآن {price_now} ريال* 🔥\n\n"
+            msg += f"❌ كان ~{price_before} ريال~ \n"
+            msg += f"✅ *والان {price_now} ريال* 🔥\n\n"
         elif price_now:
-            msg += f"✅ *والآن {price_now} ريال* 🔥\n\n"
+            msg += f"✅ *والان {price_now} ريال* 🔥\n\n"
             
-        # إعادة الرابط الأصلي الذي تم إرساله من المستخدم بالضبط
+        # إرجاع نفس الرابط
         msg += f"{original_url}\n\n"
+        
+        # إضافة سطر الترويج
         msg += f"{emoji_star}\n"
 
-        # الإرسال للخاص
+        # إرسال الرد في الخاص
         if img:
             try:
                 await update.message.reply_photo(photo=img, caption=msg)
@@ -121,7 +120,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text(msg)
 
-        # الإرسال للقناة
+        # إرسال نفس الرسالة لقناتك
         try:
             if img:
                 await context.bot.send_photo(chat_id=TARGET_CHANNEL, photo=img, caption=msg)
