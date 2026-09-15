@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 # --- البيانات 🎯 ---
 # ⚠️ قم بتغيير البوت توكن من BotFather فوراً لأن القديم تم كشفه
-BOT_TOKEN = "8681119804:AAGqGiW_Hgi2u1XrcWbv7D521Y4w9Ev8Hto"
+BOT_TOKEN = "8681119804:AAEUxT-KGYU871uMXQr6VKW8ybnCQC1XA18"
 MY_TAG = "x0659-21"
 TARGET_CHANNEL = "@smartshophazim"
 
