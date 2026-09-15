@@ -9,8 +9,8 @@ from telegram.ext import Application, MessageHandler, filters, ContextTypes
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# --- بيانات حازم الرسمية والنظيفة 🎯 ---
-BOT_TOKEN = "8681119804:AAEUxT-KGYU871uMXQr6VKW8ybnCQC1XA18”
+# --- البيانات 🎯 ---
+BOT_TOKEN = "8681119804:AAEUxT-KGYU871uMXQr6VKW8ybnCQC1XA18"
 MY_TAG = "x0659-21"
 TARGET_CHANNEL = "@smartshophazim"
 
@@ -18,7 +18,7 @@ def expand_url(url):
     """فك الروابط المختصرة القادمة من تطبيق الجوال"""
     try:
         if "amzn.to" in url or "amzn.eu" in url:
-            response = requests.Session().head(url, allow_redirects=True, timeout=7)
+            response = requests.Session().head(url, allow_redirects=True, timeout=5)
             return response.url
         return url
     except Exception as e:
@@ -51,7 +51,7 @@ def get_amazon_details(url):
         else:
             final_link = expanded_url.split("?")[0] + f"?tag={MY_TAG}" if "?" in expanded_url else expanded_url + f"?tag={MY_TAG}"
             
-        res = requests.get(final_link, headers=headers, timeout=15)
+        res = requests.get(final_link, headers=headers, timeout=10)
         soup = BeautifulSoup(res.content, "html.parser")
         
         # 1. الاسم
