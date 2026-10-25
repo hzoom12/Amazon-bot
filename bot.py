@@ -130,7 +130,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
       msg += f"✅ *والان {price_now} ريال* 🔥\n\n"
 
     # إضافة سطر الترويج
-    msg += "--------------------"
+    msg += "🔹 خصم 25٪ اضافي مع فيزا الراجحي"
 
     # إرسال الرد في الخاص
     if img:
