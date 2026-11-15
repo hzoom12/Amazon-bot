@@ -1,10 +1,10 @@
+import asyncio
 import logging
 import os
 import re
 import time
 
 import requests
-from bs4 import BeautifulSoup
 from telegram import Update
 from telegram.ext import Application, ContextTypes, MessageHandler, filters
 
@@ -16,37 +16,68 @@ logging.basicConfig(
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
-# --- البيانات (التوكن من متغيرات Render وليس من الكود) ---
+# --- الإعدادات (كلها من متغيرات Render وليست من الكود) ---
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 MY_TAG = os.environ.get("MY_TAG", "x0659-21")
 TARGET_CHANNEL = os.environ.get("TARGET_CHANNEL", "@smartshophazim")
 
-HEADERS = {
+# بيانات Creators API من Associates Central
+CREDENTIAL_ID = os.environ["CREATORS_CREDENTIAL_ID"]
+CREDENTIAL_SECRET = os.environ["CREATORS_CREDENTIAL_SECRET"]
+# السعودية ضمن منطقة أوروبا (Version 3.2)
+TOKEN_URL = os.environ.get(
+    "CREATORS_TOKEN_URL", "https://api.amazon.co.uk/auth/o2/token"
+)
+API_URL = "https://creatorsapi.amazon/catalog/v1/getItems"
+MARKETPLACE = "www.amazon.sa"
+
+SHORT_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,"
         " like Gecko) Chrome/124.0.0.0 Safari/537.36"
     ),
-    "Accept": (
-        "text/html,application/xhtml+xml,application/xml;q=0.9,"
-        "image/avif,image/webp,*/*;q=0.8"
-    ),
     "Accept-Language": "ar-SA,ar;q=0.9,en-US;q=0.8,en;q=0.7",
-    "Accept-Encoding": "gzip, deflate",
-    "Upgrade-Insecure-Requests": "1",
-    "Sec-Fetch-Dest": "document",
-    "Sec-Fetch-Mode": "navigate",
-    "Sec-Fetch-Site": "none",
-    "Sec-Fetch-User": "?1",
 }
+
+_token_cache = {"value": None, "expires": 0.0}
+
+
+def get_token(force=False):
+    """يجلب توكن OAuth ويحتفظ به لمدة ساعة"""
+    if (
+        not force
+        and _token_cache["value"]
+        and time.time() < _token_cache["expires"] - 60
+    ):
+        return _token_cache["value"]
+    res = requests.post(
+        TOKEN_URL,
+        json={
+            "grant_type": "client_credentials",
+            "client_id": CREDENTIAL_ID,
+            "client_secret": CREDENTIAL_SECRET,
+            "scope": "creatorsapi::default",
+        },
+        timeout=15,
+    )
+    if res.status_code != 200:
+        logger.error(f"Token error {res.status_code}: {res.text[:300]}")
+        res.raise_for_status()
+    data = res.json()
+    _token_cache["value"] = data["access_token"]
+    _token_cache["expires"] = time.time() + int(data.get("expires_in", 3600))
+    return _token_cache["value"]
 
 
 def expand_url(url):
-    """فك الروابط المختصرة القادمة من تطبيق الجوال"""
+    """فك الروابط المختصرة (link.amazon / amzn.to ...) لمعرفة رقم المنتج"""
     try:
-        # أي رابط ما فيه dp/ أو gp/product/ نفكّه (مثل link.amazon و amzn.to)
         if not re.search(r"(?:dp|gp/product)/[A-Z0-9]{10}", url):
             response = requests.get(
-                url, allow_redirects=True, timeout=10, headers=HEADERS,
+                url,
+                allow_redirects=True,
+                timeout=10,
+                headers=SHORT_HEADERS,
                 stream=True,
             )
             final = response.url
@@ -58,117 +89,101 @@ def expand_url(url):
         return url
 
 
+def extract_asin(url):
+    m = re.search(r"(?:dp|gp/product|gp/aw/d)/([A-Z0-9]{10})", url)
+    if m:
+        return m.group(1)
+    m = re.search(r"/([A-Z0-9]{10})(?:[/?]|$)", url)
+    return m.group(1) if m else ""
 
-def clean_price(price_str):
-    if not price_str:
+
+def fmt(amount):
+    if amount is None:
         return ""
-    digits = re.findall(r"\d+", price_str.replace(",", ""))
-    if digits:
-        half = len(digits[0]) // 2
-        first_part = digits[0][:half]
-        second_part = digits[0][half:]
-        if first_part == second_part and len(digits[0]) > 2:
-            return first_part
-        return digits[0]
-    return ""
+    try:
+        amount = float(amount)
+    except (TypeError, ValueError):
+        return ""
+    return str(int(amount)) if amount.is_integer() else f"{amount:.2f}"
 
 
-def is_blocked(res, soup):
-    """يكتشف صفحة التحقق (captcha) أو الحجب"""
-    if res.status_code != 200:
-        return f"status {res.status_code}"
-    if soup.find("form", {"action": "/errors/validateCaptcha"}):
-        return "captcha"
-    text = res.text[:5000].lower()
-    if "robot check" in text or "automated access" in text:
-        return "robot check"
-    return ""
+def call_get_items(asin, token):
+    payload = {
+        "itemIds": [asin],
+        "itemIdType": "ASIN",
+        "marketplace": MARKETPLACE,
+        "partnerTag": MY_TAG,
+        "resources": [
+            "images.primary.large",
+            "itemInfo.title",
+            "offersV2.listings.price",
+            "offersV2.listings.availability",
+        ],
+    }
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+        "x-marketplace": MARKETPLACE,
+    }
+    return requests.post(API_URL, json=payload, headers=headers, timeout=20)
 
 
-def fetch_page(url):
-    """يجلب الصفحة مع 3 محاولات، ويرجع (soup, سبب_الفشل)"""
-    reason = ""
-    for attempt in range(1, 4):
-        try:
-            session = requests.Session()
-            res = session.get(url, headers=HEADERS, timeout=15)
-            soup = BeautifulSoup(res.content, "html.parser")
-            reason = is_blocked(res, soup)
-            if not reason:
-                return soup, ""
-            logger.warning(f"Attempt {attempt} blocked: {reason} | {url}")
-        except Exception as e:
-            reason = f"exception: {e}"
-            logger.warning(f"Attempt {attempt} failed: {e}")
-        time.sleep(2 * attempt)
-    return None, reason
-
-
-def get_amazon_details(url):
+def get_item_details(url):
     """يرجع (title, price_now, price_before, img_url, final_link)
     وإذا فشل الجلب يكون title = None"""
-    expanded_url = expand_url(url)
-    asin_match = re.search(r"(?:dp|gp/product)/([A-Z0-9]{10})", expanded_url)
-    if asin_match:
-        asin = asin_match.group(1)
-        final_link = f"https://www.amazon.sa/dp/{asin}?tag={MY_TAG}"
-    else:
-        base = expanded_url.split("?")[0]
-        final_link = f"{base}?tag={MY_TAG}"
-
-    soup, reason = fetch_page(final_link)
-    if soup is None:
-        logger.error(f"Could not fetch product page ({reason}): {final_link}")
+    expanded = expand_url(url)
+    asin = extract_asin(expanded) or extract_asin(url)
+    final_link = f"https://www.amazon.sa/dp/{asin}?tag={MY_TAG}" if asin else url
+    if not asin:
+        logger.error(f"No ASIN found: {url} -> {expanded}")
         return None, "", "", "", final_link
 
-    # 1. الاسم (مع بدائل)
-    title = ""
-    title_tag = soup.find("span", {"id": "productTitle"})
-    if title_tag:
-        title = title_tag.get_text().strip()
-    if not title:
-        og = soup.find("meta", {"property": "og:title"})
-        if og and og.get("content"):
-            title = og["content"].strip()
-    if not title and soup.title:
-        title = soup.title.get_text().strip()
-    if not title:
-        logger.error(f"Title not found in page (layout changed?): {final_link}")
+    try:
+        res = call_get_items(asin, get_token())
+        if res.status_code == 401:
+            res = call_get_items(asin, get_token(force=True))
+        if res.status_code != 200:
+            logger.error(
+                f"GetItems error {res.status_code} for {asin}: {res.text[:400]}"
+            )
+            return None, "", "", "", final_link
+        data = res.json()
+    except Exception as e:
+        logger.error(f"Creators API failure for {asin}: {e}")
         return None, "", "", "", final_link
 
-    # 2. السعر الحالي
+    items = (data.get("itemsResult") or {}).get("items") or []
+    if not items:
+        logger.error(f"No items returned for {asin}: {str(data)[:400]}")
+        return None, "", "", "", final_link
+    item = items[0]
+
+    title = ((item.get("itemInfo") or {}).get("title") or {}).get(
+        "displayValue", ""
+    )
+    if not title:
+        logger.error(f"No title for {asin}")
+        return None, "", "", "", final_link
+
+    img_url = (
+        ((item.get("images") or {}).get("primary") or {}).get("large") or {}
+    ).get("url", "")
+
     price_now = ""
-    price_box = soup.find("div", {"id": "apex_desktop"})
-    if price_box:
-        p_tag = price_box.find("span", {"class": "a-offscreen"}) or price_box.find(
-            "span", {"class": "a-price-whole"}
-        )
-        if p_tag:
-            price_now = clean_price(p_tag.get_text().strip())
-    if not price_now:
-        p_now_tag = soup.find("span", {"class": "a-price-whole"})
-        if p_now_tag:
-            price_now = clean_price(p_now_tag.get_text().strip())
-
-    # 3. السعر قبل
     price_before = ""
-    p_before_tag = soup.find("span", {"class": "basisPrice"}) or soup.find(
-        "span", {"class": "a-text-strike"}
-    )
-    if p_before_tag:
-        price_before = clean_price(p_before_tag.get_text().strip())
-
-    # 4. الصورة (مع بدائل)
-    img_url = ""
-    img_tag = soup.find("img", {"id": "landingImage"}) or soup.find(
-        "img", {"id": "main-image"}
-    )
-    if img_tag:
-        img_url = img_tag.get("data-old-hires") or img_tag.get("src") or ""
-    if not img_url:
-        og_img = soup.find("meta", {"property": "og:image"})
-        if og_img and og_img.get("content"):
-            img_url = og_img["content"]
+    listings = (item.get("offersV2") or {}).get("listings") or []
+    if listings:
+        listing = next(
+            (l for l in listings if l.get("isBuyBoxWinner")), listings[0]
+        )
+        price = listing.get("price") or {}
+        now = (price.get("money") or {}).get("amount")
+        before = ((price.get("savingBasis") or {}).get("money") or {}).get(
+            "amount"
+        )
+        price_now = fmt(now)
+        if now is not None and before is not None and float(before) > float(now):
+            price_before = fmt(before)
 
     return title, price_now, price_before, img_url, final_link
 
@@ -179,22 +194,25 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not url_match:
         return
     original_url = url_match.group(0)
-    if not ("amazon" in original_url or "amzn" in original_url or "a.co" in original_url):
+    if not (
+        "amazon" in original_url or "amzn" in original_url or "a.co" in original_url
+    ):
         return
 
     await context.bot.send_chat_action(
         chat_id=update.effective_chat.id, action="typing"
     )
 
-    title, price_now, price_before, img, final_link = get_amazon_details(
-        original_url
+    # يشتغل في خيط منفصل عشان ما يوقف البوت أثناء الانتظار
+    title, price_now, price_before, img, final_link = await asyncio.to_thread(
+        get_item_details, original_url
     )
 
     # فشل الجلب: ننبّهك فقط ولا ننشر شيئاً في القناة
     if not title:
         await update.message.reply_text(
-            "⚠️ ما قدرت أجلب تفاصيل المنتج (غالباً أمازون حجب الطلب).\n"
-            "جرّب بعد دقيقة، أو انشره يدوياً:\n" + final_link
+            "⚠️ ما قدرت أجلب تفاصيل المنتج.\n"
+            "تقدر تنشره يدوياً بهذا الرابط:\n" + final_link
         )
         return
 
@@ -230,12 +248,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Error sending to channel: {e}")
 
 
+async def on_error(update, context: ContextTypes.DEFAULT_TYPE):
+    logger.error(f"Unhandled error: {context.error}")
+
+
 def main():
     logger.info("Starting bot...")
-    app = Application.builder().token(BOT_TOKEN).build()
+    app = (
+        Application.builder()
+        .token(BOT_TOKEN)
+        .concurrent_updates(True)
+        .build()
+    )
     app.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
     )
+    app.add_error_handler(on_error)
     app.run_polling(drop_pending_updates=True)
 
 
