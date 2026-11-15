@@ -17,7 +17,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 # --- البيانات (التوكن من متغيرات Render وليس من الكود) ---
-BOT_TOKEN = os.environ["8681119804:AAEUxT-KGYU871uMXQr6VKW8ybnCQC1XA18"]
+BOT_TOKEN = os.environ["BOT_TOKEN"]
 MY_TAG = os.environ.get("MY_TAG", "x0659-21")
 TARGET_CHANNEL = os.environ.get("TARGET_CHANNEL", "@smartshophazim")
 
