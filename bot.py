@@ -43,15 +43,20 @@ HEADERS = {
 def expand_url(url):
     """فك الروابط المختصرة القادمة من تطبيق الجوال"""
     try:
-        if "amzn.to" in url or "amzn.eu" in url or "a.co" in url:
-            response = requests.head(
-                url, allow_redirects=True, timeout=8, headers=HEADERS
+        # أي رابط ما فيه dp/ أو gp/product/ نفكّه (مثل link.amazon و amzn.to)
+        if not re.search(r"(?:dp|gp/product)/[A-Z0-9]{10}", url):
+            response = requests.get(
+                url, allow_redirects=True, timeout=10, headers=HEADERS,
+                stream=True,
             )
-            return response.url
+            final = response.url
+            response.close()
+            return final
         return url
     except Exception as e:
         logger.error(f"Error expanding URL: {e}")
         return url
+
 
 
 def clean_price(price_str):
