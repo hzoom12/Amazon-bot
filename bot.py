@@ -30,6 +30,8 @@ TOKEN_URL = os.environ.get(
 )
 API_URL = "https://creatorsapi.amazon/catalog/v1/getItems"
 MARKETPLACE = "www.amazon.sa"
+# لغة تفاصيل المنتج (عربي). لو ما نفعت غيّرها من Render إلى en_AE
+LANGUAGE = os.environ.get("CREATORS_LANGUAGE", "ar_AE")
 
 SHORT_HEADERS = {
     "User-Agent": (
@@ -107,7 +109,7 @@ def fmt(amount):
     return str(int(amount)) if amount.is_integer() else f"{amount:.2f}"
 
 
-def call_get_items(asin, token):
+def call_get_items(asin, token, lang=LANGUAGE):
     payload = {
         "itemIds": [asin],
         "itemIdType": "ASIN",
@@ -120,6 +122,8 @@ def call_get_items(asin, token):
             "offersV2.listings.availability",
         ],
     }
+    if lang:
+        payload["languagesOfPreference"] = [lang]
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
@@ -142,6 +146,10 @@ def get_item_details(url):
         res = call_get_items(asin, get_token())
         if res.status_code == 401:
             res = call_get_items(asin, get_token(force=True))
+        if res.status_code == 400 and LANGUAGE:
+            # ممكن اللغة غير مدعومة: نعيد المحاولة بدونها
+            logger.warning(f"Language {LANGUAGE} rejected: {res.text[:300]}")
+            res = call_get_items(asin, get_token(), lang="")
         if res.status_code != 200:
             logger.error(
                 f"GetItems error {res.status_code} for {asin}: {res.text[:400]}"
@@ -152,7 +160,8 @@ def get_item_details(url):
         logger.error(f"Creators API failure for {asin}: {e}")
         return None, "", "", "", final_link
 
-    items = (data.get("itemsResult") or {}).get("items") or []
+    result = data.get("itemsResult") or data.get("itemResults") or {}
+    items = result.get("items") or []
     if not items:
         logger.error(f"No items returned for {asin}: {str(data)[:400]}")
         return None, "", "", "", final_link
