@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import random
 import re
 import time
 
@@ -197,6 +198,77 @@ def get_item_details(url):
     return title, price_now, price_before, img_url, final_link
 
 
+# ---------- تنويع أسلوب النشر ----------
+OPENERS = [
+    "🔥 عرض ما يتفوّت",
+    "⚡ صيدة اليوم",
+    "🛒 فرصة للتوفير",
+    "💥 خصم يستاهل",
+    "✨ اختيار تسوق بذكاء",
+    "🎯 عرض مميز",
+    "👀 لقطة اليوم",
+]
+CLOSERS = [
+    "⏳ الأسعار تتغير بسرعة، لا تتأخر",
+    "✅ اطلبه قبل ما يتغير السعر",
+    "🛍️ تسوق بذكاء",
+    "🚀 لا تفوّت العرض",
+]
+_last = {"layout": -1}
+
+
+def build_price(now, before):
+    pct = saved = None
+    try:
+        if now and before and float(before) > float(now):
+            pct = round((float(before) - float(now)) / float(before) * 100)
+            saved = fmt(float(before) - float(now))
+    except ValueError:
+        pass
+
+    if before and now and pct:
+        options = [
+            f"❌ كان ~{before} ريال~ \n✅ *والان {now} ريال* 🔥",
+            f"💰 السعر: *{now} ريال* بدل {before} ريال",
+            f"🏷️ خصم {pct}%\nمن {before} إلى *{now} ريال*",
+            f"📉 نزل من {before} إلى *{now} ريال* (وفّرت {saved} ريال)",
+        ]
+    elif now:
+        options = [
+            f"✅ *والان {now} ريال* 🔥",
+            f"💰 السعر: *{now} ريال*",
+            f"🏷️ بـ *{now} ريال* فقط",
+        ]
+    else:
+        return ""
+    return random.choice(options)
+
+
+def build_message(url, title, now, before):
+    """يبني نص المنشور بأسلوب مختلف كل مرة"""
+    price = build_price(now, before)
+    opener = random.choice(OPENERS)
+    closer = random.choice(CLOSERS)
+
+    def make(t):
+        p = f"{price}\n\n" if price else ""
+        layouts = [
+            f"{url}\n\n{t}\n\n{p}------",
+            f"{url}\n\n{opener}\n\n{t}\n\n{p}".rstrip(),
+            f"{url}\n\n{opener}\n{t}\n\n{p}{closer}",
+            f"{url}\n\n{t}\n\n{p}{closer}",
+        ]
+        return layouts
+
+    choices = [i for i in range(4) if i != _last["layout"]]
+    idx = random.choice(choices)
+    _last["layout"] = idx
+    msg = make(title)[idx]
+    if len(msg) > 1000:  # حد تيليقرام لعنوان الصورة
+        msg = make(title[:150] + "…")[idx]
+    return msg
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (update.message.text or "").strip()
     url_match = re.search(r"https?://\S+", text)
@@ -225,16 +297,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    msg = f"{original_url}\n\n"
-    msg += f"{title}\n\n"
-
-    if price_before and price_now:
-        msg += f"❌ كان ~{price_before} ريال~ \n"
-        msg += f"✅ *والان {price_now} ريال* 🔥\n\n"
-    elif price_now:
-        msg += f"✅ *والان {price_now} ريال* 🔥\n\n"
-
-    msg += "------"
+    msg = build_message(original_url, title, price_now, price_before)
 
     # الرد في الخاص
     if img:
