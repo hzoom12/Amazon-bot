@@ -214,6 +214,8 @@ CLOSERS = [
     "🛍️ تسوق بذكاء",
     "🚀 لا تفوّت العرض",
 ]
+# سطر ثابت يُضاف تحت السعر في كل منشور (اتركه فاضياً "" لإيقافه)
+EXTRA_LINE = "🔹خصم اضافي مع بطاقات الراجحي."
 _last = {"layout": -1}
 
 
@@ -251,7 +253,8 @@ def build_message(url, title, now, before):
     closer = random.choice(CLOSERS)
 
     def make(t):
-        p = f"{price}\n\n" if price else ""
+        parts = [x for x in (price, EXTRA_LINE) if x]
+        p = ("\n".join(parts) + "\n\n") if parts else ""
         layouts = [
             f"{url}\n\n{t}\n\n{p}------",
             f"{url}\n\n{opener}\n\n{t}\n\n{p}".rstrip(),
